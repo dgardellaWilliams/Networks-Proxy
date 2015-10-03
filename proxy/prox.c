@@ -23,8 +23,7 @@
 //size of the buffer for requests
 #define REQ_SIZ 2048
 
-#define THREAD_POOL 1
-
+#define NUM_THREADS 1
 
 // proxy connection struct 
 struct ProxyConnection{
@@ -37,30 +36,6 @@ struct ProxyConnection{
 };
 
 int listen(int port){
-
-  int listSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  struct sockaddr_in my_addr;
-  my_addr.sin_family = AF_INET;
-  my_addr.sin_port = htons(port);
-  my_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  
-  int uno = 1;
-  setsockopt(listSock,SOL_SOCKET, SO_REUSEADDR, &uno, sizeof(uno) == -1);
-  if (bind(listSock, (struct sockaddr *)&my_addr, sizeof(my_addr)) == -1) exit(1);    
-  listen(listSock, MAX_BACKLOG);
-
-  // This infinite while loop handles all server operations
-  while(true){
-    // This is where new connections are accepted
-    int newSock = 0;
-    int addrlenp = sizeof(my_addr);
-    char *buf = (char*) malloc (REQ_SIZ);
-    //If we reach a connection attempt. 
-    if ((newSock = accept(listSock,(struct sockaddr *)&my_addr,(socklen_t *)&addrlenp)) > 0 ) {  
-      
-      free(buf);
-    }      
-  }
 }
 
 void process_connection(){
@@ -74,7 +49,7 @@ void spawn_event_processors(int count) {
   for (i = 0; i < count; i++){
     pthread_create(&thread[i], NULL, process_connection,NULL);
   }
-  for (i=0; i<NUMTHREADS; i++) {
+  for (i=0; i < count; i++) {
     pthread_join(thread[i], NULL);
   }
   
@@ -82,7 +57,7 @@ void spawn_event_processors(int count) {
 
 int main(int argc, char** argv){
   // Threads to process events
-  spawn_event_processors(THREAD_POOL);
+  spawn_event_processors(NUM_THREADS);
 
   // Listen for incoming (client) connections
   listen(6555);

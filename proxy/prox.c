@@ -24,15 +24,21 @@
 #define REQ_SIZ 2048
 
 
+
 // proxy connection struct 
-struct proxyConnection
-{
-
-
-}
-
+struct ProxyConnection{
+  int clientSoc;
+  int serverSoc;
+  int destPort;
+  char * destAddr;
+  int command; 
+  int status; // listerning, reading from client, or sending to client
+};
 
 int listener(int port){
+
+int listen(int port){
+
   int listSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   struct sockaddr_in my_addr;
   my_addr.sin_family = AF_INET;
@@ -59,6 +65,16 @@ int listener(int port){
 }
 
 
+void spawn_event_processors(int count) {
+  while (count--) {
+    // spawn event processor thread
+  }
+}
+
 int main(int argc, char** argv){
-  return 1;
+  // Threads to process events
+  spawn_event_processors(4);
+
+  // Listen for incoming (client) connections
+  listen(6555);
 }

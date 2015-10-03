@@ -1,2 +1,2 @@
 make:
-	gcc -o proxy prox.c -lpthread
+	g++ -std=c++0x -pthread -o proxy prox.cpp

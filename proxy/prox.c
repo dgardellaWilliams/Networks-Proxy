@@ -11,7 +11,7 @@
 //number of clients that can be in the backlog
 #define MAX_BACKLOG 10
 
-//Because C sucks
+//for ease of use
 #define true 1 
 
 //size of the buffer for requests

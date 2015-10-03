@@ -51,16 +51,26 @@ int listener(int port){
   }
 }
 
+void process_connection(){
+  return;
+}
+
 
 void spawn_event_processors(int count) {
-  while (count--) {
-    // spawn event processor thread
+  pthread_t threads[count];
+  int i;
+  for (i = 0; i < count; i++){
+    pthread_create(&thread[i], NULL, process_connection,NULL);
   }
+  for (i=0; i<NUMTHREADS; i++) {
+    pthread_join(thread[i], NULL);
+  }
+  
 }
 
 int main(int argc, char** argv){
   // Threads to process events
-  spawn_event_processors(4);
+  spawn_event_processors(THREAD_POOL);
 
   // Listen for incoming (client) connections
   listen();

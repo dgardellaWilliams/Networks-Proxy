@@ -50,6 +50,16 @@ int listener(int port){
 }
 
 
+void spawn_event_processors(int count) {
+  while (count--) {
+    // spawn event processor thread
+  }
+}
+
 int main(int argc, char** argv){
-  return 1;
+  // Threads to process events
+  spawn_event_processors(4);
+
+  // Listen for incoming (client) connections
+  listen();
 }

@@ -33,15 +33,6 @@ int listen(int port){
 }
 
 void *process_connection(){
-  if (status == 0){
-
-  }
-  else if (status == 1){
-
-  }
-  else if (status == 2){
-
-  }
   return;
 }
 

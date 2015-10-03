@@ -6,13 +6,6 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <string.h>
-#include <time.h>
-#include <sys/stat.h>
-#include <poll.h>
-#include <sys/queue.h>
 
 //number of clients that can be in the backlog
 #define MAX_BACKLOG 10

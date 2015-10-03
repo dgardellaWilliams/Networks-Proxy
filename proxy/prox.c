@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <pthread.h>
 
 //number of clients that can be in the backlog
 #define MAX_BACKLOG 10
@@ -31,7 +32,7 @@ struct ProxyConnection{
 int listen(int port){
 }
 
-void process_connection(){
+void *process_connection(){
   return;
 }
 
@@ -40,10 +41,10 @@ void spawn_event_processors(int count) {
   pthread_t threads[count];
   int i;
   for (i = 0; i < count; i++){
-    pthread_create(&thread[i], NULL, process_connection,NULL);
+    pthread_create(&threads[i], NULL, process_connection,NULL);
   }
   for (i=0; i < count; i++) {
-    pthread_join(thread[i], NULL);
+    pthread_join(threads[i], NULL);
   }
   
 }

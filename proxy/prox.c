@@ -33,6 +33,15 @@ int listen(int port){
 }
 
 void *process_connection(){
+  if (status == 0){
+
+  }
+  else if (status == 1){
+
+  }
+  else if (status == 2){
+
+  }
   return;
 }
 
@@ -45,8 +54,7 @@ void spawn_event_processors(int count) {
   }
   for (i=0; i < count; i++) {
     pthread_join(threads[i], NULL);
-  }
-  
+  }  
 }
 
 int main(int argc, char** argv){

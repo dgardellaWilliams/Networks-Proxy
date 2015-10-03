@@ -23,7 +23,7 @@
 //size of the buffer for requests
 #define REQ_SIZ 2048
 
-int listener(int port){
+int list(int port){
   int listSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   struct sockaddr_in my_addr;
   my_addr.sin_family = AF_INET;
@@ -61,5 +61,5 @@ int main(int argc, char** argv){
   spawn_event_processors(4);
 
   // Listen for incoming (client) connections
-  listen();
+  listen(6555);
 }

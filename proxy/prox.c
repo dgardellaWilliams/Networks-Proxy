@@ -23,7 +23,7 @@
 //size of the buffer for requests
 #define REQ_SIZ 2048
 
-
+#define THREAD_POOL 1
 
 
 // proxy connection struct 
@@ -35,11 +35,6 @@ struct ProxyConnection{
   int command; 
   int status; // listerning, reading from client, or sending to client
 };
-
-int listener(int port){
-
-#define THREAD_POOL 1
-
 
 int listen(int port){
 

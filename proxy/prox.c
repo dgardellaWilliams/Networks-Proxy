@@ -23,6 +23,8 @@
 //size of the buffer for requests
 #define REQ_SIZ 2048
 
+#define THREAD_POOL 1
+
 int listener(int port){
   int listSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   struct sockaddr_in my_addr;

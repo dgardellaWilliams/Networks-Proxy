@@ -1,2 +1,2 @@
 make:
-	gcc -o proxy proxy.c 
+	gcc -o proxy prox.c 

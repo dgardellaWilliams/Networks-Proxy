@@ -45,23 +45,24 @@ void print_break();
 
 ProxyConnection* get_event(){
   ProxyConnection* next_event;
-
- wait:
-  while(event_queue.empty()){}
-
-  event_lock.lock();
   
-  if (!event_queue.empty()){
-    next_event = event_queue.front(); 
-    event_queue.pop(); 
-  }
-  else {
-    //Lol
+  while (true) {
+    while (event_queue.empty());
+    
+    event_lock.lock();
+    
+    if (!event_queue.empty()) {
+      next_event = event_queue.front();
+      event_queue.pop();
+      
+      event_lock.unlock();
+      
+      break;
+    }
+    
     event_lock.unlock();
-    goto wait;
   }
-
-  event_lock.unlock();
+  
   return next_event;
 }
 

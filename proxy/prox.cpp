@@ -27,10 +27,16 @@
 
 #define DEBUG 2 //0 = No Debugging, 1 = Some, 2 = Full
 
+// Connection status constants
+#define COMPLETE -1
+#define UNINITIALIZED 0
+#define READING_CLIENT 1
+#define READING_SERVER 2
+
 // proxy connection struct 
 struct ProxyConnection{
-  int clientSoc;
-  int serverSoc;
+  int clientSock;
+  int serverSock;
   int destPort;
   char * destAddr;
   int command; 
@@ -39,12 +45,15 @@ struct ProxyConnection{
 
 std::queue<ProxyConnection*> event_queue;
 std::mutex event_lock;
-int connections_open;
 
 //Prints a line of ----'s
 void print_break();
 
-ProxyConnection* get_event(){
+/*
+ * Blocks until an event is available
+ */
+ProxyConnection* get_event()
+{
   ProxyConnection* next_event;
   
   while (true) {
@@ -67,7 +76,8 @@ ProxyConnection* get_event(){
   return next_event;
 }
 
-void enqueue_connection(ProxyConnection* c){
+void enqueue_connection(ProxyConnection* c)
+{
   event_lock.lock();
   
   event_queue.push(c); 
@@ -75,7 +85,8 @@ void enqueue_connection(ProxyConnection* c){
   event_lock.unlock();
 }
 
-int front_listen(int port){
+int front_listen(int port)
+{
   //Create the socket
   int front_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   
@@ -85,52 +96,72 @@ int front_listen(int port){
   my_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
   int true_val = 1;
-  //Set the socket to allow the reuse of local addresses
+
+  // Set the socket to allow the reuse of local addresses
   setsockopt(front_sock, SOL_SOCKET, SO_REUSEADDR, (char *) &true_val, sizeof(true_val));
 
-  //Bind socket and exit if failed.
-  if (bind(front_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) == -1) exit(1);
+  // Bind socket and exit if failed.
+  if (bind(front_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) == -1) {
+    exit(1);
+  }
  
-  //Listen on the socket
+  // Listen on the socket
   listen(front_sock, MAX_BACKLOG);
 
-  while(true){
+  while (true) {
     int new_cli_sock = 0;
     int addr_len = sizeof(my_addr);
     
-    //When we get a new connection, we pop in onto the queue!
-    if( (new_cli_sock = accept(front_sock,(struct sockaddr *)&my_addr,(socklen_t *)&addr_len))) {
+    // When we get a new connection, we enqueue it
+    if ((new_cli_sock = accept(front_sock, (struct sockaddr *)&my_addr, (socklen_t *)&addr_len))) {
       ProxyConnection* new_connect = (ProxyConnection*) malloc(sizeof(ProxyConnection));
-      new_connect->clientSoc = new_cli_sock;
+      new_connect->clientSock = new_cli_sock;
       new_connect->status = 0;
       
       enqueue_connection(new_connect);
-      connections_open++;
     }
   }
-
 }
 
-void *process_connection(){
-  while(true){
+
+
+void *process_queue()
+{
+  while (true) {
     ProxyConnection* cur_connection = get_event();
-    if (cur_connection->status == 0){
 
+    if (cur_connection->status == UNINITIALIZED) {
+      create_connection(cur_connection);
     }
 
-    //Enqueue if unfinished and free if finished
-    if (cur_connection->status == -1) free(cur_connection);
-    else enqueue_connection(cur_connection);
+    else if (cur_connection->status == READING_CLIENT) {
+      forward_next_packet_to_server(cur_connection);
+    }
+
+    else if (cur_connection->status == READING_SERVER) {
+      forward_next_packet_to_client(cur_connection);
+    }
+
+
+    // Enqueue if unfinished and free if finished
+    if (cur_connection->status == COMPLETE) { 
+      free(cur_connection);
+    }
+    
+    else {
+      enqueue_connection(cur_connection);
+    }
   }
 }
 
 
-void spawn_event_processors(int count) {
+void spawn_event_processors(int count)
+{
   std::thread threads[count];
   int i;
-  for (i = 0; i < count; i++){
-    if (DEBUG > 1) printf("Thread %i Started\n",i+1);
-    threads[i] = std::thread(process_connection);
+  for (i = 0; i < count; i++) {
+    if (DEBUG > 1) printf("Thread %i Started\n", i+1);
+    threads[i] = std::thread(process_queue);
   }
   print_break();
   for (i=0; i < count; i++) {
@@ -138,11 +169,13 @@ void spawn_event_processors(int count) {
   }  
 }
 
-void print_break(){
+void print_break()
+{
   printf("---------------------------------------------------------\n");
 }
 
-int main(int argc, char** argv){
+int main(int argc, char** argv)
+{
   //Define port using commandline if given
   int port = DEFAULT_PORT;
 

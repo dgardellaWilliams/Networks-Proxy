@@ -6,11 +6,13 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <netinet/in.h>
 
 #include <thread>
 #include <string>
 #include <queue>
 #include <mutex>
+
 
 //number of clients that can be in the backlog
 #define MAX_BACKLOG 10
@@ -41,18 +43,53 @@ struct ProxyConnection{
 
 std::queue<ProxyConnection*> event_queue;
 std::mutex event_lock;
-
+int connections_open;
 
 ProxyConnection* get_event(){
   event_lock.lock();
+
   while(event_queue.empty()){}
   ProxyConnection* next_event = event_queue.front(); 
   event_queue.pop(); 
+
   event_lock.unlock();
   return next_event;
 }
 
-int listen(int port){
+int front_listen(int port){
+  //Create the socket
+  int front_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  
+  struct sockaddr_in my_addr;
+  my_addr.sin_family = AF_INET;
+  my_addr.sin_port = htons(port);
+  my_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+  int true_val = 1;
+  //Set the socket to allow the reuse of local addresses
+  setsockopt(front_sock, SOL_SOCKET, SO_REUSEADDR, (char *) &true_val, sizeof(true_val));
+
+  //Bind socket and exit if failed.
+  if (bind(front_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) == -1) exit(1);
+ 
+  //Listen on the socket
+  listen(front_sock, MAX_BACKLOG);
+
+  while(true){
+    int new_cli_sock = 0;
+    int addr_len = sizeof(my_addr);
+    
+    //When we get a new connection, we pop in onto the queue!
+    if( (new_cli_sock = accept(front_sock,(struct sockaddr *)&my_addr,(socklen_t *)&addr_len))) {
+      ProxyConnection* new_connect = (ProxyConnection*) malloc(sizeof(ProxyConnection));
+      new_connect->clientSoc = new_cli_sock;
+      new_connect->status = 0;
+      
+      event_queue.push(new_connect);
+      connections_open++;
+    }
+  }
+
 }
 
 void *process_connection(){
@@ -80,8 +117,6 @@ void print_break(){
 }
 
 int main(int argc, char** argv){
-  print_break();
-
   //Define port using commandline if given
   int port = DEFAULT_PORT;
   if (argc > 1){
@@ -89,6 +124,8 @@ int main(int argc, char** argv){
     if (user_port > 1000) port = user_port; 
     else printf("Port entered not recognized\n");
   }
+
+  print_break();
   printf("Proxy server port: %i\n", port);
   print_break();
 
@@ -96,6 +133,6 @@ int main(int argc, char** argv){
   spawn_event_processors(NUM_THREADS);
 
   // Listen for incoming (client) connections
-  listen(port);
+  front_listen(port);
 
 }

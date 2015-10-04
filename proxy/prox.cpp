@@ -71,7 +71,6 @@ ProxyConnection* get_event()
       
       break;
     }
-    
     event_lock.unlock();
   }
   

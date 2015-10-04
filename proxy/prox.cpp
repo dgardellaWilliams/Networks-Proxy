@@ -122,17 +122,17 @@ int front_listen(int port)
   }
 }
 
-void init_connection()
+void init_connection(ProxyConnection* conn)
 {
   
 }
 
-void forward_next_packet_to_server()
+void forward_next_packet_to_server(ProxyConnection* conn)
 {
   
 }
 
-void forward_next_packet_to_client()
+void forward_next_packet_to_client(ProxyConnection* conn)
 {
   
 }

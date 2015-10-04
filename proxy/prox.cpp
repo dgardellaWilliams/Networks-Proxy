@@ -55,7 +55,10 @@ ProxyConnection* get_event(){
     next_event = event_queue.front(); 
     event_queue.pop(); 
   }
-  else goto wait;
+  else {
+    event_lock.unlock();
+    goto wait;
+  }
 
   event_lock.unlock();
   return next_event;

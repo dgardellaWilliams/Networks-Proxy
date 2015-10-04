@@ -37,6 +37,9 @@
 struct ProxyConnection{
   int clientSock;
   int serverSock;
+  int destPort;
+  char * destAddr;
+  int command; 
   int status; // listerning, reading from client, or sending to client
 };
 
@@ -133,7 +136,6 @@ void forward_next_packet_to_client(ProxyConnection* conn)
 {
   
 }
-
 
 void *process_queue()
 {

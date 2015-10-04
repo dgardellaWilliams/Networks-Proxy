@@ -26,11 +26,6 @@
 
 #define DEBUG 2 //0 = No Debugging, 1 = Some, 2 = Full
 
-
-//Prints a line of ----'s
-void print_break();
-
-
 // proxy connection struct 
 struct ProxyConnection{
   int clientSoc;
@@ -44,6 +39,9 @@ struct ProxyConnection{
 std::queue<ProxyConnection*> event_queue;
 std::mutex event_lock;
 int connections_open;
+
+//Prints a line of ----'s
+void print_break();
 
 ProxyConnection* get_event(){
   event_lock.lock();
@@ -95,6 +93,13 @@ int front_listen(int port){
 void *process_connection(){
   while(true){
     ProxyConnection* cur_connection = get_event();
+    if (cur_connection->status == 0){
+
+    }
+
+    //Enqueue if unfinished and free if finished
+    if (cur_connection->status == -1) free(cur_connection);
+    else event_queue.push(cur_connection);
   }
 }
 

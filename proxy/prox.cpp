@@ -123,7 +123,20 @@ int front_listen(int port)
   }
 }
 
+void init_connection()
+{
+  
+}
 
+void forward_next_packet_to_server()
+{
+  
+}
+
+void forward_next_packet_to_client()
+{
+  
+}
 
 void *process_queue()
 {
@@ -131,7 +144,7 @@ void *process_queue()
     ProxyConnection* cur_connection = get_event();
 
     if (cur_connection->status == UNINITIALIZED) {
-      create_connection(cur_connection);
+      init_connection(cur_connection);
     }
 
     else if (cur_connection->status == READING_CLIENT) {

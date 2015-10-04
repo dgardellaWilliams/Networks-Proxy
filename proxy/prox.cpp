@@ -14,13 +14,14 @@
 #include <mutex>
 
 
-//number of clients that can be in the backlog
+// number of clients that can be in the backlog
 #define MAX_BACKLOG 10
 
-//size of the buffer for requests
+// size of the buffer for requests
 #define REQ_SIZ 2048
 
-#define NUM_THREADS 1
+// Number of threads that'll be doing stuff
+#define WORKER_THREADS 1
 
 #define DEFAULT_PORT 65565
 
@@ -144,10 +145,16 @@ void print_break(){
 int main(int argc, char** argv){
   //Define port using commandline if given
   int port = DEFAULT_PORT;
+
   if (argc > 1){
     int user_port = atoi(argv[1]);
-    if (user_port > 1000) port = user_port; 
-    else printf("Port entered not recognized\n");
+
+    if (user_port > 1024) {
+      port = user_port; 
+    }
+    else {
+      printf("Port entered not recognized\n");
+    }
   }
 
   print_break();
@@ -155,7 +162,7 @@ int main(int argc, char** argv){
   print_break();
 
   // Threads to process events
-  spawn_event_processors(NUM_THREADS);
+  spawn_event_processors(WORKER_THREADS);
 
   // Listen for incoming (client) connections
   front_listen(port);

@@ -44,20 +44,27 @@ int connections_open;
 void print_break();
 
 ProxyConnection* get_event(){
-  event_lock.lock();
+  ProxyConnection* next_event;
 
+ wait:
   while(event_queue.empty()){}
-  ProxyConnection* next_event = event_queue.front(); 
-  event_queue.pop(); 
+
+  event_lock.lock();
+  
+  if (!event_queue.empty()){
+    next_event = event_queue.front(); 
+    event_queue.pop(); 
+  }
+  else goto wait;
 
   event_lock.unlock();
   return next_event;
 }
 
-void enqueue_connection(ProxyConnection* co){
+void enqueue_connection(ProxyConnection* c){
   event_lock.lock();
   
-  event_queue.push(co); 
+  event_queue.push(c); 
 
   event_lock.unlock();
 }
@@ -107,7 +114,7 @@ void *process_connection(){
 
     //Enqueue if unfinished and free if finished
     if (cur_connection->status == -1) free(cur_connection);
-    else event_queue.push(cur_connection);
+    else enqueue_connection(cur_connection);
   }
 }
 

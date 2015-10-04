@@ -23,6 +23,45 @@
 //size of the buffer for requests
 #define REQ_SIZ 2048
 
+struct Connection
+{
+  int client_socket;
+  int dest_socket;
+  int dest_port;
+  int dest_addr;
+  // command
+  int status;
+};
+
+struct Node
+{
+  Connection* conn;
+  struct Node* next;
+};
+
+struct Queue
+{
+  struct Node* head;
+  struct Node* tail;
+};
+
+void enqueue(Queue* queue, Connection* conn)
+{
+  Node* n = (Node*) malloc(sizeof(Node));
+  n->conn = conn;
+  n->next = NULL;
+  
+  if (queue->head == NULL) {
+    
+  }
+}
+
+Connection* dequeue(Queue* queue)
+{
+  //
+}
+
+
 int listen(int port){
   int listSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   struct sockaddr_in my_addr;

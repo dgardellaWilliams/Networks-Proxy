@@ -35,6 +35,8 @@
 
 // proxy connection struct 
 struct ProxyConnection{
+  // likely doesnt need to be stored here because ocne the socket
+  // is created, you no longer need to store it
   int clientSock;
   int serverSock;
   int destPort;
@@ -124,7 +126,28 @@ int front_listen(int port)
 
 void init_connection(ProxyConnection* conn)
 {
+  char buf[BUFSIZ];
+  int len;
   
+  if (DEBUG > 1) printf("jfdjsfklj\n");
+
+  if (len = recv(conn->clientSock,buf,sizeof(buf),0)){
+    fputs(buf,stdout);
+    printf("\n");
+  }
+
+  // read packet=>
+  //  set port
+  //  set dest address
+  //  set/extract dest path
+  //  set serverSock
+  
+  
+  // # forward packet # done in process_queue now
+
+  // check if done reading packets
+  //  yes => close connection
+  //  no  => update status to READING_CLIENT
 }
 
 void forward_next_packet_to_server(ProxyConnection* conn)
@@ -146,7 +169,8 @@ void *process_queue()
       init_connection(cur_connection);
     }
 
-    else if (cur_connection->status == READING_CLIENT) {
+    // start forwarding immediately ^^^
+    if (cur_connection->status == READING_CLIENT) {
       forward_next_packet_to_server(cur_connection);
     }
 

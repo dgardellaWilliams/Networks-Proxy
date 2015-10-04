@@ -56,6 +56,7 @@ ProxyConnection* get_event(){
     event_queue.pop(); 
   }
   else {
+    //Lol
     event_lock.unlock();
     goto wait;
   }

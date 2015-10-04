@@ -10,6 +10,7 @@
 
 #include <thread>
 #include <string>
+#include <string.h>
 #include <queue>
 #include <mutex>
 
@@ -23,7 +24,7 @@
 // Number of threads that'll be doing stuff
 #define WORKER_THREADS 1
 
-#define DEFAULT_PORT 65565
+#define DEFAULT_PORT 8000
 
 #define DEBUG 2 //0 = No Debugging, 1 = Some, 2 = Full
 
@@ -103,6 +104,7 @@ int front_listen(int port)
 
   // Bind socket and exit if failed.
   if (bind(front_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) == -1) {
+    printf("failed to bind.\n");
     exit(1);
   }
  
@@ -129,12 +131,43 @@ void init_connection(ProxyConnection* conn)
   char buf[BUFSIZ];
   int len;
   
-  if (DEBUG > 1) printf("jfdjsfklj\n");
-
   if (len = recv(conn->clientSock,buf,sizeof(buf),0)){
     fputs(buf,stdout);
     printf("\n");
+    
+    char firstLine[BUFSIZ];
+    int index = 0;
+    
+    // get the first line 
+    for(int i = 0; i < BUFSIZ; i++){
+      if (buf[i] == '|'){
+	break;
+      }
+      firstLine[index] = buf[i];
+      index++;
+    }
+    
+    // get the path 
+    char path[BUFSIZ];
+    index = 0;
+    int spaceCount = 0;
+    for(int i = 0; i < BUFSIZ; i++){
+      if (firstLine[i] == ' '){
+	spaceCount++;
+	continue;
+      }
+      
+      if (spaceCount > 2){
+	break;
+      }
+
+      if (spaceCount == 1){
+	path[index] = firstLine[i];
+	index++;
+      }
+    }
   }
+    
 
   // read packet=>
   //  set port
@@ -201,7 +234,9 @@ void spawn_event_processors(int count)
   }
   print_break();
   for (i=0; i < count; i++) {
-    threads[i].join();
+    // detaching the threads and
+    //threads[i].join();
+    threads[i].detach();
   }  
 }
 

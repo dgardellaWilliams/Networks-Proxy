@@ -54,6 +54,14 @@ ProxyConnection* get_event(){
   return next_event;
 }
 
+void enqueue_connection(ProxyConnection* co){
+  event_lock.lock();
+  
+  event_queue.push(co); 
+
+  event_lock.unlock();
+}
+
 int front_listen(int port){
   //Create the socket
   int front_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -83,7 +91,7 @@ int front_listen(int port){
       new_connect->clientSoc = new_cli_sock;
       new_connect->status = 0;
       
-      event_queue.push(new_connect);
+      enqueue_connection(new_connect);
       connections_open++;
     }
   }

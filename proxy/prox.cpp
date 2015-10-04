@@ -103,7 +103,6 @@ int front_listen(int port)
 
   // Bind socket and exit if failed.
   if (bind(front_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) == -1) {
-    printf("Failed bind\n");
     exit(1);
   }
  
@@ -202,7 +201,7 @@ void spawn_event_processors(int count)
   }
   print_break();
   for (i=0; i < count; i++) {
-    threads[i].detach();
+    threads[i].join();
   }  
 }
 
@@ -234,7 +233,6 @@ int main(int argc, char** argv)
   // Threads to process events
   spawn_event_processors(WORKER_THREADS);
 
-  printf("Hello World\n");
   // Listen for incoming (client) connections
   front_listen(port);
 

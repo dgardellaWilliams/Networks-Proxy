@@ -7,13 +7,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <netinet/in.h>
-
+#include <sys/types.h>
 #include <thread>
 #include <string>
 #include <string.h>
 #include <queue>
 #include <mutex>
-
+#include <sys/socket.h>
+#include <netdb.h>
 
 // number of clients that can be in the backlog
 #define MAX_BACKLOG 10
@@ -25,6 +26,8 @@
 #define WORKER_THREADS 1
 
 #define DEFAULT_PORT 8000
+
+#define SERVER_PORT 5000
 
 #define DEBUG 2 //0 = No Debugging, 1 = Some, 2 = Full
 
@@ -130,46 +133,94 @@ void init_connection(ProxyConnection* conn)
 {
   char buf[BUFSIZ];
   int len;
- 
+  struct hostent *hp;
+  struct sockaddr_in sin;
+  int sock;
+
   if (len = recv(conn->clientSock,buf,sizeof(buf),0)){
-    //fputs(buf,stdout);
-    //printf("\n");
+  
+    fputs(buf,stdout);
+    printf("\n");
+ 
     
     char firstLine[BUFSIZ];
     int index = 0;
     
-    // get the first line 
+    // get the header line 
     int i = 0;
-    while (buf[i] != '|'){
+    while (buf[i] != '\n'){
       firstLine[index] = buf[i];
       index++;
       i++;
     }
     
-    fputs(firstLine,stdout);
-    printf("\n");
+    //get the host name
+    i++;
+    int spaceCount = 0;
+    index = 0;
+    char host[BUFSIZ];
+    while (buf[i] != '\n'){
+      if (buf[i] == ' '){
+	i++;
+	spaceCount++;
+      }
+
+      if (spaceCount == 1){
+	host[index] = buf[i];
+	index++;
+      }
+      i++;
+    }
     
+    //fputs(host,stdout);
+    //printf("\n");
+
     // get the path 
     char path[BUFSIZ];
     index = 0;
-    int spaceCount = 0;
-    for(int i = 0; i < BUFSIZ; i++){
+    spaceCount = 0;
+    for(i = 0; i < BUFSIZ; i++){
       if (firstLine[i] == ' '){
 	spaceCount++;
 	continue;
       }
-      
       if (spaceCount > 2){
 	break;
       }
-
       if (spaceCount == 1){
 	path[index] = firstLine[i];
 	index++;
       }
     }
-  }
+
+
+    //translate the host name into IP address
+    hp = gethostbyname(host);
+    if (!hp){
+      printf("unknown host: %s\n",host);
+      exit(1);
+    }
     
+
+    //build address structure
+    sin.sin_family = AF_INET;
+    bcopy(hp->h_addr,(char*)&sin.sin_addr,hp->h_length);
+    sin.sin_port = htons(SERVER_PORT);
+    
+    //active open
+    if ((sock== socket(PF_INET,SOCK_STREAM,0))<0){
+      printf("error in socket to destination");
+      exit(1);
+    }
+    
+    if (connect(sock,(struct sockaddr *)&sin,sizeof(sin))<0){
+      printf("couldn't connect to the destination socket");
+      exit(1);
+    }
+    
+
+  }
+
 
   // read packet=>
   //  set port

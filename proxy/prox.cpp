@@ -66,7 +66,7 @@ ProxyConnection* get_event()
     while (event_queue.empty());
     
     event_lock.lock();
-    
+
     if (!event_queue.empty()) {
       next_event = event_queue.front();
       event_queue.pop();
@@ -90,43 +90,51 @@ void enqueue_connection(ProxyConnection* c)
   event_lock.unlock();
 }
 
-int front_listen(int port)
+/*
+ * Open new sockets for incoming connections, and enqueue them
+ * for processing
+ */
+void serve(int listen_sock, struct sockaddr_in my_addr)
 {
-  //Create the socket
-  int front_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  
-  struct sockaddr_in my_addr;
-  my_addr.sin_family = AF_INET;
-  my_addr.sin_port = htons(port);
-  my_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-  int true_val = 1;
-
-  // Set the socket to allow the reuse of local addresses
-  setsockopt(front_sock, SOL_SOCKET, SO_REUSEADDR, (char *) &true_val, sizeof(true_val));
-
-  // Bind socket and exit if failed.
-  if (bind(front_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) == -1) {
-    printf("failed to bind.\n");
-    exit(1);
-  }
- 
-  // Listen on the socket
-  listen(front_sock, MAX_BACKLOG);
-
   while (true) {
     int new_cli_sock = 0;
     int addr_len = sizeof(my_addr);
     
     // When we get a new connection, we enqueue it
-    if ((new_cli_sock = accept(front_sock, (struct sockaddr *)&my_addr, (socklen_t *)&addr_len))) {
+    if ((new_cli_sock = accept(listen_sock, 
+			       (struct sockaddr *) &my_addr, 
+			       (socklen_t *) &addr_len))) 
+      {
       ProxyConnection* new_connect = (ProxyConnection*) malloc(sizeof(ProxyConnection));
       new_connect->clientSock = new_cli_sock;
-      new_connect->status = 0;
+      new_connect->status = UNINITIALIZED;
       
       enqueue_connection(new_connect);
     }
+  }  
+}
+
+int listen_and_serve(int port)
+{  
+  struct sockaddr_in my_addr;
+  my_addr.sin_family = AF_INET;
+  my_addr.sin_port = htons(port);
+  my_addr.sin_addr.s_addr = INADDR_ANY;
+
+  // Create the socket
+  int listen_sock = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
+
+  // Bind socket and exit if failed.
+  if (bind(listen_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) < 0) {
+    printf("failed to bind.\n");
+    exit(1);
   }
+
+  // Listen on the socket
+  listen(listen_sock, MAX_BACKLOG);
+
+  // Handle creation of sockets for incoming connections
+  serve(listen_sock, my_addr);
 }
 
 void init_connection(ProxyConnection* conn)
@@ -255,7 +263,7 @@ void *process_queue()
       init_connection(cur_connection);
     }
 
-    // start forwarding immediately ^^^
+    // start forwarding immediately
     if (cur_connection->status == READING_CLIENT) {
       forward_next_packet_to_server(cur_connection);
     }
@@ -265,7 +273,7 @@ void *process_queue()
     }
 
 
-    // Enqueue if unfinished and free if finished
+    // [Re]Enqueue if unfinished and free if finished
     if (cur_connection->status == COMPLETE) { 
       free(cur_connection);
     }
@@ -322,6 +330,5 @@ int main(int argc, char** argv)
   spawn_event_processors(WORKER_THREADS);
 
   // Listen for incoming (client) connections
-  front_listen(port);
-
+  listen_and_serve(port);
 }

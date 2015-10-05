@@ -1,7 +1,7 @@
 /**
  * (c) 2015 Devin Gardella, Matt LaRose, and Diwas Timilsina 
  *
- *   A simple web proxy in the C programming language under Linux.
+ *   A simple web proxy in the C++ programming language under Linux.
  */
 
 #include <stdlib.h>
@@ -143,13 +143,10 @@ void init_connection(ProxyConnection* conn)
   struct hostent *hp;
   struct sockaddr_in sin;
   int sock;
+  
 
   if (len = recv(conn->clientSock,buf,sizeof(buf),0)){
   
-    fputs(buf,stdout);
-    printf("\n");
- 
-    
     char firstLine[BUFSIZ];
     int index = 0;
     
@@ -161,46 +158,77 @@ void init_connection(ProxyConnection* conn)
       i++;
     }
     
-    //get the host name
-    i++;
-    int spaceCount = 0;
+    // command protocol://host:port/path HTTP/version
     index = 0;
+    char sendBuf[BUFSIZ];
+    while (firstLine[index] != ' '){
+      sendBuf[index] = buf[index];
+      index++;
+    }
+    sendBuf[index] = ' ';
+    index++;
+    
+    
+    // parse host name 
+    char * afterHost = strstr(firstLine,"//");
+   
+    //get the host name
     char host[BUFSIZ];
-    while (buf[i] != '\n'){
-      if (buf[i] == ' '){
-	i++;
-	spaceCount++;
+    afterHost+=2;
+    
+    int j = 0;
+    while (*afterHost != '/'){
+      
+      if (*afterHost == ':'){
+	break;
       }
-
-      if (spaceCount == 1){
-	host[index] = buf[i];
-	index++;
+      host[j] = *afterHost;
+      afterHost++;
+      j++;
+    }
+        
+    // parse the port(if any)
+    if (*afterHost == ':'){
+      char portBuf[BUFSIZ];
+      j = 0;
+      afterHost++;
+      while (*afterHost != '/'){
+	portBuf[j] = *afterHost;
+	j++;
+	afterHost++;
       }
+      SERVER_PORT = atoi(portBuf);
+    }
+      
+    // parse the path 
+    while(*afterHost != ' '){
+      sendBuf[index] = *afterHost;
+      index++;
+      afterHost++;
+    }
+    sendBuf[index] = ' ';
+    index++;
+  
+  
+    // parse the HTTP version
+    while(*afterHost != '.'){
+      sendBuf[index] = *afterHost;
+      index++;
+      afterHost++;
+    }
+    sendBuf[index] = '.';
+    index++;
+    sendBuf[index] = '0';
+    index++;
+    
+    //copy the rest of the characters in the packet 
+    while(i < BUFSIZ){
+      sendBuf[index] = buf[i];
+      index++;
       i++;
     }
     
-    //fputs(host,stdout);
-    //printf("\n");
-
-    // get the path 
-    char path[BUFSIZ];
-    index = 0;
-    spaceCount = 0;
-    for(i = 0; i < BUFSIZ; i++){
-      if (firstLine[i] == ' '){
-	spaceCount++;
-	continue;
-      }
-      if (spaceCount > 2){
-	break;
-      }
-      if (spaceCount == 1){
-	path[index] = firstLine[i];
-	index++;
-      }
-    }
-
-
+    
     //translate the host name into IP address
     hp = gethostbyname(host);
     if (!hp){
@@ -208,7 +236,6 @@ void init_connection(ProxyConnection* conn)
       exit(1);
     }
     
-
     //build address structure
     sin.sin_family = AF_INET;
     bcopy(hp->h_addr,(char*)&sin.sin_addr,hp->h_length);
@@ -216,16 +243,23 @@ void init_connection(ProxyConnection* conn)
     
     //active open
     if ((sock== socket(PF_INET,SOCK_STREAM,0))<0){
-      printf("error in socket to destination");
+      printf("error in socket to destination\n");
       exit(1);
     }
     
-    if (connect(sock,(struct sockaddr *)&sin,sizeof(sin))<0){
-      printf("couldn't connect to the destination socket");
+    // do we need to bind before connecting the socket??
+    if (bind(sock,(struct sockaddr*)&sin,sizeof(sin))<0){
+      printf("couldn't bind!\n");
       exit(1);
     }
-    
 
+    if (connect(sock,(struct sockaddr *)&sin,sizeof(sin))<0){
+      printf("couldn't connect to the destination socket\n");
+      exit(1);
+    }
+    
+    int len = strlen(sendBuf)+1;
+    send(sock,sendBuf,len,0);
   }
 
 

@@ -248,10 +248,12 @@ void init_connection(ProxyConnection* conn)
     }
     
     // do we need to bind before connecting the socket??
+    /**
     if (bind(sock,(struct sockaddr*)&sin,sizeof(sin))<0){
       printf("couldn't bind!\n");
       exit(1);
     }
+    */
 
     if (connect(sock,(struct sockaddr *)&sin,sizeof(sin))<0){
       printf("couldn't connect to the destination socket\n");

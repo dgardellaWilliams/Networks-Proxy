@@ -121,7 +121,7 @@ int listen_and_serve(int port)
   my_addr.sin_addr.s_addr = INADDR_ANY;
 
   // Create the socket
-  int listen_sock = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
+  int listen_sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 
   // Bind socket and exit if failed.
   if (bind(listen_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) < 0) {

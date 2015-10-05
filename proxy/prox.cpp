@@ -26,7 +26,7 @@
 
 #define DEFAULT_PORT 8000
 
-#define DEBUG 2 //0 = No Debugging, 1 = Some, 2 = Full
+#define DEBUG 2 // 0 = No Debugging, 1 = Some, 2 = Full
 
 // Connection status constants
 #define COMPLETE -1
@@ -34,7 +34,6 @@
 #define READING_CLIENT 1
 #define READING_SERVER 2
 
-// proxy connection struct 
 struct ProxyConnection{
   // likely doesnt need to be stored here because ocne the socket
   // is created, you no longer need to store it
@@ -43,13 +42,13 @@ struct ProxyConnection{
   int destPort;
   char * destAddr;
   int command; 
-  int status; // listerning, reading from client, or sending to client
+  int status;
 };
 
 std::queue<ProxyConnection*> event_queue;
 std::mutex event_lock;
 
-//Prints a line of ----'s
+// Prints a line of ----'s
 void print_break();
 
 /*
@@ -193,14 +192,25 @@ void init_connection(ProxyConnection* conn)
   //  no  => update status to READING_CLIENT
 }
 
+void forward(int src_sock, int dest_sock, int num_bytes = REQ_SIZE)
+{
+  char buf[num_bytes];
+  int len;
+
+  while (len = recv(src_sock, buf, sizeof(buf), 0)) {
+    send(dest_sock, buf, len, 0);
+  }
+  
+}
+
 void forward_next_packet_to_server(ProxyConnection* conn)
 {
-  
+  forward(conn->clientSock, conn->serverSock);
 }
 
 void forward_next_packet_to_client(ProxyConnection* conn)
 {
-  
+  forward(conn->serverSock, conn->clientSock);  
 }
 
 void *process_queue()
@@ -267,7 +277,8 @@ int main(int argc, char** argv)
       port = user_port; 
     }
     else {
-      printf("Port entered not recognized\n");
+      printf("Port must be > 1024\n");
+      exit(1);
     }
   }
 

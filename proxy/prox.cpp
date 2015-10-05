@@ -130,22 +130,24 @@ void init_connection(ProxyConnection* conn)
 {
   char buf[BUFSIZ];
   int len;
-  
+ 
   if (len = recv(conn->clientSock,buf,sizeof(buf),0)){
-    fputs(buf,stdout);
-    printf("\n");
+    //fputs(buf,stdout);
+    //printf("\n");
     
     char firstLine[BUFSIZ];
     int index = 0;
     
     // get the first line 
-    for(int i = 0; i < BUFSIZ; i++){
-      if (buf[i] == '|'){
-	break;
-      }
+    int i = 0;
+    while (buf[i] != '|'){
       firstLine[index] = buf[i];
       index++;
+      i++;
     }
+    
+    fputs(firstLine,stdout);
+    printf("\n");
     
     // get the path 
     char path[BUFSIZ];

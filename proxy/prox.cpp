@@ -4,6 +4,20 @@
  *   A simple web proxy in the C++ programming language under Linux.
  */
 
+
+/***********************************************************************
+  So we were wrong with the recieves.
+  The connection is not finished so that recv will not return 0.
+  I tried making the sockets non-blocking and that was unsuccessful...
+  but that could have just been me.
+
+  The way forward might just be to pass back and forth from both sides 
+  at once and wait for one of them to close the connection, at which 
+  point we do! I dunno.
+ ***********************************************************************/
+
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <netinet/in.h>
@@ -15,6 +29,7 @@
 #include <mutex>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <sys/fcntl.h>
 
 // number of clients that can be in the backlog
 #define MAX_BACKLOG 10
@@ -104,11 +119,11 @@ void serve(int listen_sock, struct sockaddr_in my_addr)
 			       (struct sockaddr *) &my_addr, 
 			       (socklen_t *) &addr_len))) 
       {
-      ProxyConnection* new_connect = (ProxyConnection*) malloc(sizeof(ProxyConnection));
-      new_connect->clientSock = new_cli_sock;
-      new_connect->status = UNINITIALIZED;
-      
-      enqueue_connection(new_connect);
+	ProxyConnection* new_connect = (ProxyConnection*) malloc(sizeof(ProxyConnection));
+	new_connect->clientSock = new_cli_sock;
+	new_connect->status = UNINITIALIZED;
+	
+	enqueue_connection(new_connect);
     }
   }  
 }
@@ -146,7 +161,7 @@ void init_connection(ProxyConnection* conn)
   
 
   if (len = recv(conn->clientSock,buf,sizeof(buf),0)){
-  
+    printf("The original length was: %i\n", len);
     char firstLine[BUFSIZ];
     int index = 0;
     
@@ -167,8 +182,7 @@ void init_connection(ProxyConnection* conn)
     }
     sendBuf[index] = ' ';
     index++;
-    
-    
+        
     // parse host name 
     char * afterHost = strstr(firstLine,"//");
    
@@ -241,13 +255,6 @@ void init_connection(ProxyConnection* conn)
     bcopy(hp->h_addr,(char*)&sin.sin_addr,hp->h_length);
     sin.sin_port = htons(SERVER_PORT);
     
-    /**
-    my_addr.sin_family = AF_INET;
-    my_addr.sin_port = htons(port);
-    my_addr.sin_addr.s_addr = INADDR_ANY;
-    */
-    
-    //fputs(host,stdout);
     //active open
     if ((sock= socket(PF_INET,SOCK_STREAM,IPPROTO_TCP))<0){
       printf("error in socket to destination\n");
@@ -262,9 +269,10 @@ void init_connection(ProxyConnection* conn)
       printf("couldn't connect to the destination socket\n");
       exit(1);
     }
-    
+        
     int len = strlen(sendBuf)+1;
     send(sock,sendBuf,len,0);
+    conn->status = READING_CLIENT;
   }
 
   
@@ -287,8 +295,10 @@ int forward(int src_sock, int dest_sock, int num_bytes = 2048)
 {
   char buf[num_bytes];
   int len;
-
+  
+  printf("Trying to pull off of socket\n");
   len = recv(src_sock, buf, sizeof(buf), 0);
+  printf("Length = %i\n", len);
   if (len){
     send(dest_sock, buf, len, 0);
   }
@@ -298,6 +308,7 @@ int forward(int src_sock, int dest_sock, int num_bytes = 2048)
 void forward_next_packet_to_server(ProxyConnection* conn)
 {
   if(! (forward(conn->clientSock, conn->serverSock))){
+    printf("Switched to listening to server!\n");
     conn->status = READING_SERVER;
   }
 }
@@ -305,6 +316,7 @@ void forward_next_packet_to_server(ProxyConnection* conn)
 void forward_next_packet_to_client(ProxyConnection* conn)
 {
   if (! (forward(conn->serverSock, conn->clientSock))){
+    printf("Finished transaction!\n");
     conn->status = COMPLETE;
   }
 }
@@ -315,25 +327,30 @@ void *process_queue()
     ProxyConnection* cur_connection = get_event();
 
     if (cur_connection->status == UNINITIALIZED) {
+      printf("Starting init!\n");
       init_connection(cur_connection);
     }
 
     // start forwarding immediately
     if (cur_connection->status == READING_CLIENT) {
+      printf("Continuing client reading!\n");
       forward_next_packet_to_server(cur_connection);
     }
 
     else if (cur_connection->status == READING_SERVER) {
+      printf("Continuing server reading!\n");
       forward_next_packet_to_client(cur_connection);
     }
 
 
     // [Re]Enqueue if unfinished and free if finished
     if (cur_connection->status == COMPLETE) { 
+      printf("Finished\n");
       free(cur_connection);
     }
     
     else {
+      printf("Re-enqueing\n");
       enqueue_connection(cur_connection);
     }
   }

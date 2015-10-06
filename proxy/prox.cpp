@@ -16,8 +16,6 @@
   point we do! I dunno.
  ***********************************************************************/
 
-
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <netinet/in.h>
@@ -162,6 +160,10 @@ void init_connection(ProxyConnection* conn)
 
   if (len = recv(conn->clientSock,buf,sizeof(buf),0)){
     printf("The original length was: %i\n", len);
+    
+
+
+
     char firstLine[BUFSIZ];
     int index = 0;
     

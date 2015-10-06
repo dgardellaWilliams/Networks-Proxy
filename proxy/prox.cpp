@@ -23,7 +23,7 @@
 // Number of threads that'll be doing stuff
 #define WORKER_THREADS 1
 
-#define DEFAULT_PORT 65565
+#define DEFAULT_PORT 8000
 
 #define DEBUG 2 //0 = No Debugging, 1 = Some, 2 = Full
 
@@ -201,7 +201,7 @@ void spawn_event_processors(int count)
   }
   print_break();
   for (i=0; i < count; i++) {
-    threads[i].join();
+    threads[i].detach();
   }  
 }
 

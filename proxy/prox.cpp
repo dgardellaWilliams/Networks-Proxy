@@ -8,12 +8,16 @@
 /***********************************************************************
   So we were wrong with the recieves.
   The connection is not finished so that recv will not return 0.
-  I tried making the sockets non-blocking and that was unsuccessful...
-  but that could have just been me.
-
-  The way forward might just be to pass back and forth from both sides 
-  at once and wait for one of them to close the connection, at which 
-  point we do! I dunno.
+   
+  Instead we need to read the content length parameter of the http 
+  request! 
+  
+  If a request contains a message-body and a Content-Length is not given, 
+  the server SHOULD respond with 400 (bad request) if it cannot determine
+  the length of the message, or with 411 (length required) if it wishes 
+  to insist on receiving a valid Content-Length.
+  
+  Once we've hit the length of the message we are done!
  ***********************************************************************/
 
 #include <stdlib.h>

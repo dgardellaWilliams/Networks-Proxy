@@ -223,7 +223,7 @@ int forward(int src_sock, int dest_sock, int num_bytes = 2048)
   int len;
   
   printf("Trying to pull off of socket\n");
-  len = recv(src_sock, buf, sizeof(buf), 0);
+  len = recv(src_sock, buf, sizeof(buf), MSG_DONTWAIT);
   printf("Length = %i\n", len);
   if (len){
     send(dest_sock, buf, len, 0);

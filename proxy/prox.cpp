@@ -283,25 +283,30 @@ void init_connection(ProxyConnection* conn)
   //  no  => update status to READING_CLIENT
 }
 
-void forward(int src_sock, int dest_sock, int num_bytes = 2048)
+int forward(int src_sock, int dest_sock, int num_bytes = 2048)
 {
   char buf[num_bytes];
   int len;
 
-  while (len = recv(src_sock, buf, sizeof(buf), 0)) {
+  len = recv(src_sock, buf, sizeof(buf), 0);
+  if (len){
     send(dest_sock, buf, len, 0);
   }
-  
+  return len;
 }
 
 void forward_next_packet_to_server(ProxyConnection* conn)
 {
-  forward(conn->clientSock, conn->serverSock);
+  if(! (forward(conn->clientSock, conn->serverSock))){
+    conn->status = READING_SERVER;
+  }
 }
 
 void forward_next_packet_to_client(ProxyConnection* conn)
 {
-  forward(conn->serverSock, conn->clientSock);  
+  if (! (forward(conn->serverSock, conn->clientSock))){
+    conn->status = COMPLETE;
+  }
 }
 
 void *process_queue()

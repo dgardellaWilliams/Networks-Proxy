@@ -8,16 +8,7 @@
 /***********************************************************************
   So we were wrong with the recieves.
   The connection is not finished so that recv will not return 0.
-   
-  Instead we need to read the content length parameter of the http 
-  request! 
-  
-  If a request contains a message-body and a Content-Length is not given, 
-  the server SHOULD respond with 400 (bad request) if it cannot determine
-  the length of the message, or with 411 (length required) if it wishes 
-  to insist on receiving a valid Content-Length.
-  
-  Once we've hit the length of the message we are done!
+  It only does that when the socket is closed!
  ***********************************************************************/
 
 #include <stdlib.h>
@@ -61,7 +52,6 @@ struct ProxyConnection{
   int serverSock;
   int destPort;
   char * destAddr;
-  int command; 
   int status;
 };
 
@@ -163,96 +153,26 @@ void init_connection(ProxyConnection* conn)
   
 
   if (len = recv(conn->clientSock,buf,sizeof(buf),0)){
-    printf("The original length was: %i\n", len);
-    
 
-
-
-    char firstLine[BUFSIZ];
-    int index = 0;
+    std::string send_buf;
+    std::string host;
+    size_t content_len = 0;
+    size_t i = 0;
     
-    // get the header line 
-    int i = 0;
-    while (buf[i] != '\n'){
-      firstLine[index] = buf[i];
-      index++;
-      i++;
-    }
-    
-    // command protocol://host:port/path HTTP/version
-    index = 0;
-    char sendBuf[BUFSIZ];
-    while (firstLine[index] != ' '){
-      sendBuf[index] = buf[index];
-      index++;
-    }
-    sendBuf[index] = ' ';
-    index++;
-        
-    // parse host name 
-    char * afterHost = strstr(firstLine,"//");
-   
-    //get the host name
-    char host[BUFSIZ];
-    afterHost+=2;
-    
-    int j = 0;
-    while (*afterHost != '/'){
-      
-      if (*afterHost == ':'){
-	break;
-      }
-      host[j] = *afterHost;
-      afterHost++;
-      j++;
-    }
-        
-    // parse the port(if any)
-    if (*afterHost == ':'){
-      char portBuf[BUFSIZ];
-      j = 0;
-      afterHost++;
-      while (*afterHost != '/'){
-	portBuf[j] = *afterHost;
-	j++;
-	afterHost++;
-      }
-      SERVER_PORT = atoi(portBuf);
-    }
-      
-    // parse the path 
-    while(*afterHost != ' '){
-      sendBuf[index] = *afterHost;
-      index++;
-      afterHost++;
-    }
-    sendBuf[index] = ' ';
-    index++;
-  
-  
-    // parse the HTTP version
-    while(*afterHost != '.'){
-      sendBuf[index] = *afterHost;
-      index++;
-      afterHost++;
-    }
-    sendBuf[index] = '.';
-    index++;
-    sendBuf[index] = '0';
-    index++;
-    
-    //copy the rest of the characters in the packet 
-    while(i < BUFSIZ){
-      sendBuf[index] = buf[i];
-      index++;
-      i++;
-    }
-    
+    // Clear code structure with comments. DO NOT CHANGE.
+    do send_buf.push_back(buf[i]); while(buf[i++] != ' ');  //Copy command
+    while(buf[i++] != ':'); i+=2;                           //Skip http or https
+    while(buf[i] != '/') host.push_back(buf[i++]);          //Copy host name
+    do send_buf.push_back(buf[i]); while(buf[i++] != ' ');  //Copy rest of address 
+    while(buf[i++] != '\n');                                //Skip HTTP/1.1
+    send_buf += std::string("HTTP/1.0\n");                  //Add HTTP/1.0
+    send_buf += std::string(&buf[i]);                       //Finish copy
+    send_buf.replace(send_buf.find("Connection: keep-alive"), 22, "Connection: close");
     
     //translate the host name into IP address
-    hp = gethostbyname(host);
+    hp = gethostbyname(host.c_str());
     if (!hp){
-      printf("unknown host: %s\n",host);
+      printf("unknown host: %s\n",host.c_str());
       exit(1);
     }
     
@@ -267,7 +187,7 @@ void init_connection(ProxyConnection* conn)
       exit(1);
     }
     
-    fputs(sendBuf,stdout);
+    fputs(send_buf.c_str(),stdout);
     printf("\n");
     
    
@@ -276,8 +196,8 @@ void init_connection(ProxyConnection* conn)
       exit(1);
     }
         
-    int len = strlen(sendBuf)+1;
-    send(sock,sendBuf,len,0);
+    int len = strlen(send_buf.c_str())+1;
+    send(sock,send_buf.c_str(),len,0);
     conn->status = READING_CLIENT;
   }
 

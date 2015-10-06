@@ -35,7 +35,7 @@
 #define READING_CLIENT 1
 #define READING_SERVER 2
 
-int SERVER_PORT = DEFAULT_PORT;
+int SERVER_PORT = 80;
 
 struct ProxyConnection{
   // likely doesnt need to be stored here because ocne the socket
@@ -241,20 +241,23 @@ void init_connection(ProxyConnection* conn)
     bcopy(hp->h_addr,(char*)&sin.sin_addr,hp->h_length);
     sin.sin_port = htons(SERVER_PORT);
     
+    /**
+    my_addr.sin_family = AF_INET;
+    my_addr.sin_port = htons(port);
+    my_addr.sin_addr.s_addr = INADDR_ANY;
+    */
+    
+    //fputs(host,stdout);
     //active open
-    if ((sock== socket(PF_INET,SOCK_STREAM,0))<0){
+    if ((sock= socket(PF_INET,SOCK_STREAM,IPPROTO_TCP))<0){
       printf("error in socket to destination\n");
       exit(1);
     }
     
-    // do we need to bind before connecting the socket??
-    /**
-    if (bind(sock,(struct sockaddr*)&sin,sizeof(sin))<0){
-      printf("couldn't bind!\n");
-      exit(1);
-    }
-    */
-
+    fputs(sendBuf,stdout);
+    printf("\n");
+    
+   
     if (connect(sock,(struct sockaddr *)&sin,sizeof(sin))<0){
       printf("couldn't connect to the destination socket\n");
       exit(1);
@@ -264,6 +267,7 @@ void init_connection(ProxyConnection* conn)
     send(sock,sendBuf,len,0);
   }
 
+  
 
   // read packet=>
   //  set port

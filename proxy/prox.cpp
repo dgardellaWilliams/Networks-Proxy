@@ -165,26 +165,94 @@ void init_connection(ProxyConnection* conn)
   if (len = recv(conn->clientSock,buf,sizeof(buf),0)){
     printf("The original length was: %i\n", len);
     
-    std::string convient(buf);
-    std::string host;
 
-    size_t fa = convient.find("Host: ");
-    host = convient.substr(fa+6, convient.find('\n',fa) - fa -7);
-   
-    convient = convient.substr(0,convient.find("http")) + 
-      convient.substr(convient.find(host.c_str()) + host.length(), 
-		      convient.find(" ",convient.find(host.c_str())) - convient.find(host.c_str()));
-    printf("Test string: %s\n",convient.c_str());
-    exit(1);
 
+
+    char firstLine[BUFSIZ];
+    int index = 0;
     
+    // get the header line 
+    int i = 0;
+    while (buf[i] != '\n'){
+      firstLine[index] = buf[i];
+      index++;
+      i++;
+    }
+    
+    // command protocol://host:port/path HTTP/version
+    index = 0;
     char sendBuf[BUFSIZ];
+    while (firstLine[index] != ' '){
+      sendBuf[index] = buf[index];
+      index++;
+    }
+    sendBuf[index] = ' ';
+    index++;
+        
+    // parse host name 
+    char * afterHost = strstr(firstLine,"//");
+   
+    //get the host name
+    char host[BUFSIZ];
+    afterHost+=2;
+    
+    int j = 0;
+    while (*afterHost != '/'){
+      
+      if (*afterHost == ':'){
+	break;
+      }
+      host[j] = *afterHost;
+      afterHost++;
+      j++;
+    }
+        
+    // parse the port(if any)
+    if (*afterHost == ':'){
+      char portBuf[BUFSIZ];
+      j = 0;
+      afterHost++;
+      while (*afterHost != '/'){
+	portBuf[j] = *afterHost;
+	j++;
+	afterHost++;
+      }
+      SERVER_PORT = atoi(portBuf);
+    }
+      
+    // parse the path 
+    while(*afterHost != ' '){
+      sendBuf[index] = *afterHost;
+      index++;
+      afterHost++;
+    }
+    sendBuf[index] = ' ';
+    index++;
+  
+  
+    // parse the HTTP version
+    while(*afterHost != '.'){
+      sendBuf[index] = *afterHost;
+      index++;
+      afterHost++;
+    }
+    sendBuf[index] = '.';
+    index++;
+    sendBuf[index] = '0';
+    index++;
+    
+    //copy the rest of the characters in the packet 
+    while(i < BUFSIZ){
+      sendBuf[index] = buf[i];
+      index++;
+      i++;
+    }
     
     
     //translate the host name into IP address
-    hp = gethostbyname(host.c_str());
+    hp = gethostbyname(host);
     if (!hp){
-      printf("unknown host: %s\n",host.c_str());
+      printf("unknown host: %s\n",host);
       exit(1);
     }
     

@@ -33,7 +33,7 @@
 #define REQ_SIZ 2048
 
 // Number of threads that'll be doing stuff
-#define WORKER_THREADS 1
+#define WORKER_THREADS 4
 
 #define DEFAULT_PORT 8000
 
@@ -138,7 +138,7 @@ void serve(int listen_sock, struct sockaddr_in my_addr)
   }  
 }
 
-int listen_and_serve(int port)
+void listen_and_serve(int port)
 {  
   struct sockaddr_in my_addr;
   my_addr.sin_family = AF_INET;
@@ -170,28 +170,43 @@ void init_connection(ProxyConnection* conn)
   int sock;
   
 
-  if (len = recv(conn->clientSock,buf,sizeof(buf),0)){
+  if ((len = recv(conn->clientSock,buf,sizeof(buf),0))){
 
-    std::string send_buf;
-    std::string host;
+    std::string send_buf = "";
+    std::string host = "";
+    std::string port = "";
     size_t content_len = 0;
     size_t i = 0;
     
     // Clear code structure with comments. DO NOT CHANGE.
-    do send_buf.push_back(buf[i]); while(buf[i++] != ' ');  //Copy command
-    while(buf[i++] != ':'); i+=2;                           //Skip http or https
-    while(buf[i] != '/') host.push_back(buf[i++]);          //Copy host name
-    do send_buf.push_back(buf[i]); while(buf[i++] != ' ');  //Copy rest of address 
-    while(buf[i++] != '\n');                                //Skip HTTP/1.1
-    send_buf += std::string("HTTP/1.0\n");                  //Add HTTP/1.0
-    send_buf += std::string(&buf[i]);                       //Finish copy
+    do send_buf.push_back(buf[i]); while(buf[i++] != ' ');          //Copy command
+    
+    while(buf[i++] != ':'); 
+    i+=2;                                                           //Skip http or https
+    
+    while(buf[i] != '/' && buf[i] != ':') host.push_back(buf[i++]); //Copy host name
+
+    if(buf[i] == ':'){
+      i++;
+      while(buf[i] != '/') port.push_back(buf[i++]);
+    } 
+    
+    do send_buf.push_back(buf[i]); while(buf[i++] != ' ');          //Copy rest of address 
+    while(buf[i++] != '\n');                                        //Skip HTTP/1.1
+    send_buf += std::string("HTTP/1.0\n");                          //Add HTTP/1.0
+    send_buf += std::string(&buf[i]);                               //Finish copy
     send_buf.replace(send_buf.find("Connection: keep-alive"), 22, "Connection: close");
+    
+    if(!port.empty()){
+      SERVER_PORT = atoi(port.c_str());
+    }
     
     //translate the host name into IP address
     hp = gethostbyname(host.c_str());
     if (!hp){
       printf("unknown host: %s\n",host.c_str());
-      graceful_end(1);
+      conn->status = COMPLETE;
+      return;
     }
     
     //build address structure
@@ -204,10 +219,16 @@ void init_connection(ProxyConnection* conn)
       printf("error in socket to destination\n");
       graceful_end(1);
     }
-    
+    conn->serverSock = sock;
+
+
+    /*
+    print_break();
+    fputs(buf,stdout);
+    print_break();
     fputs(send_buf.c_str(),stdout);
     printf("\n");
-    
+    */
    
     if (connect(sock,(struct sockaddr *)&sin,sizeof(sin))<0){
       printf("couldn't connect to the destination socket\n");
@@ -216,7 +237,7 @@ void init_connection(ProxyConnection* conn)
         
     int len = strlen(send_buf.c_str())+1;
 
-    if (send(sock,send_buf.c_str(),len,0) < 0){
+    if (sendto(sock,send_buf.c_str(),len,0, (struct sockaddr *) &sin, sizeof(sin)) < 0){
       printf("Error in initial send\n");
       graceful_end(1);
     }
@@ -255,8 +276,7 @@ int forward(int src_sock, int dest_sock)
     send(src_sock, buf, serv_len, 0);
   }
 
-  sleep(1);
-  printf("Client: %i <--------> %i : Server\n",cli_len,serv_len);
+  //printf("Client: %i <--------> %i : Server\n",cli_len,serv_len);
 
   return cli_len != 0 && serv_len != 0;
 }
@@ -267,12 +287,12 @@ void *process_queue()
     ProxyConnection* cur_connection = get_event();
 
     if (cur_connection->status == UNINITIALIZED) {
-      printf("Starting init!\n");
+      //printf("Starting init!\n");
       init_connection(cur_connection);
     }
 
     else if (cur_connection->status == MAILING) {
-      printf("Mailing Packets back and forth!\n");
+      //printf("Mailing Packets back and forth!\n");
       if (!forward(cur_connection->clientSock, cur_connection->serverSock)){
 	cur_connection->status = COMPLETE;
       }
@@ -280,28 +300,28 @@ void *process_queue()
 
 
     if (cur_connection->status == COMPLETE) { 
-      printf("Finished\n");
+      //printf("Finished\n");
       free_connection(cur_connection);
     }
     
     else {
-      printf("Re-enqueing\n");
+      //printf("Re-enqueing\n");
       enqueue_connection(cur_connection);
     }
   }
 }
 
 
-void spawn_event_processors(int count)
+void spawn_event_processors()
 {
-  std::thread threads[count];
+  std::thread threads[WORKER_THREADS];
   int i;
-  for (i = 0; i < count; i++) {
+  for (i = 0; i < WORKER_THREADS; i++) {
     if (DEBUG > 1) printf("Thread %i Started\n", i+1);
     threads[i] = std::thread(process_queue);
   }
   print_break();
-  for (i=0; i < count; i++) {
+  for (i=0; i < WORKER_THREADS; i++) {
     threads[i].detach();
   }  
 }
@@ -335,7 +355,7 @@ int main(int argc, char** argv)
   print_break();
 
   // Threads to process events
-  spawn_event_processors(WORKER_THREADS);
+  spawn_event_processors();
 
   // Listen for incoming (client) connections
   listen_and_serve(port);

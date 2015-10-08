@@ -195,7 +195,9 @@ void init_connection(ProxyConnection* conn)
     while(buf[i++] != '\n');                                        //Skip HTTP/1.1
     send_buf += std::string("HTTP/1.0\n");                          //Add HTTP/1.0
     send_buf += std::string(&buf[i]);                               //Finish copy
-    send_buf.replace(send_buf.find("Connection: keep-alive"), 22, "Connection: close");
+    if (send_buf.find("Connection: keep-alive") != std::string::npos){
+      send_buf.replace(send_buf.find("Connection: keep-alive"), 22, "Connection: close");
+    }
     
     if(!port.empty()){
       SERVER_PORT = atoi(port.c_str());
@@ -334,6 +336,7 @@ void print_break()
 int main(int argc, char** argv)
 {
   signal(SIGINT, graceful_end);
+  signal(SIGABRT, graceful_end);
 
   //Define port using commandline if given
   int port = DEFAULT_PORT;

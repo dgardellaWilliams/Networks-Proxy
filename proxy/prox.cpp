@@ -23,6 +23,8 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <sys/fcntl.h>
+#include <unistd.h>
+#include <signal.h>
 
 // number of clients that can be in the backlog
 #define MAX_BACKLOG 10
@@ -40,26 +42,42 @@
 // Connection status constants
 #define COMPLETE -1
 #define UNINITIALIZED 0
-#define READING_CLIENT 1
-#define READING_SERVER 2
+#define MAILING 1
 
 int SERVER_PORT = 80;
 
 struct ProxyConnection{
-  // likely doesnt need to be stored here because ocne the socket
-  // is created, you no longer need to store it
   int clientSock;
   int serverSock;
-  int destPort;
-  char * destAddr;
   int status;
 };
 
 std::queue<ProxyConnection*> event_queue;
 std::mutex event_lock;
+int threads_running = 1; // Boolean to say if threads should be running
 
 // Prints a line of ----'s
 void print_break();
+
+void free_connection(ProxyConnection* conn){
+  shutdown(conn->clientSock,2);
+  shutdown(conn->serverSock,2);
+  free(conn);
+}
+
+void graceful_end(int signum){
+  threads_running = 0;
+  printf("\nEnding threads in: 3...\n"); sleep(1); 
+  printf("Ending threads in: 2...\n"); sleep(1);
+  printf("Ending threads in: 1...\n"); sleep(1);
+  event_lock.lock();
+  while(!event_queue.empty()){
+    ProxyConnection* conn = event_queue.front();
+    event_queue.pop();
+    free_connection(conn);
+  }
+  exit(signum);
+}
 
 /*
  * Blocks until an event is available
@@ -133,7 +151,7 @@ int listen_and_serve(int port)
   // Bind socket and exit if failed.
   if (bind(listen_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) < 0) {
     printf("failed to bind.\n");
-    exit(1);
+    graceful_end(1);
   }
 
   // Listen on the socket
@@ -145,7 +163,7 @@ int listen_and_serve(int port)
 
 void init_connection(ProxyConnection* conn)
 {
-  char buf[BUFSIZ];
+  char buf[REQ_SIZ];
   int len;
   struct hostent *hp;
   struct sockaddr_in sin;
@@ -173,7 +191,7 @@ void init_connection(ProxyConnection* conn)
     hp = gethostbyname(host.c_str());
     if (!hp){
       printf("unknown host: %s\n",host.c_str());
-      exit(1);
+      graceful_end(1);
     }
     
     //build address structure
@@ -184,7 +202,7 @@ void init_connection(ProxyConnection* conn)
     //active open
     if ((sock= socket(PF_INET,SOCK_STREAM,IPPROTO_TCP))<0){
       printf("error in socket to destination\n");
-      exit(1);
+      graceful_end(1);
     }
     
     fputs(send_buf.c_str(),stdout);
@@ -193,12 +211,16 @@ void init_connection(ProxyConnection* conn)
    
     if (connect(sock,(struct sockaddr *)&sin,sizeof(sin))<0){
       printf("couldn't connect to the destination socket\n");
-      exit(1);
+      graceful_end(1);
     }
         
     int len = strlen(send_buf.c_str())+1;
-    send(sock,send_buf.c_str(),len,0);
-    conn->status = READING_CLIENT;
+
+    if (send(sock,send_buf.c_str(),len,0) < 0){
+      printf("Error in initial send\n");
+      graceful_end(1);
+    }
+    conn->status = MAILING;
   }
 
   
@@ -217,39 +239,31 @@ void init_connection(ProxyConnection* conn)
   //  no  => update status to READING_CLIENT
 }
 
-int forward(int src_sock, int dest_sock, int num_bytes = 2048)
+int forward(int src_sock, int dest_sock)
 {
-  char buf[num_bytes];
-  int len;
+  char buf[REQ_SIZ];
+  int cli_len;
+  int serv_len;
   
-  printf("Trying to pull off of socket\n");
-  len = recv(src_sock, buf, sizeof(buf), MSG_DONTWAIT);
-  printf("Length = %i\n", len);
-  if (len){
-    send(dest_sock, buf, len, 0);
+  cli_len = recv(src_sock, buf, sizeof(buf), MSG_DONTWAIT);
+  if (cli_len > 0){
+    send(dest_sock, buf, cli_len, 0);
   }
-  return len;
-}
+  
+  serv_len = recv(dest_sock, buf, sizeof(buf), MSG_DONTWAIT);
+  if (serv_len > 0){
+    send(src_sock, buf, serv_len, 0);
+  }
 
-void forward_next_packet_to_server(ProxyConnection* conn)
-{
-  if(! (forward(conn->clientSock, conn->serverSock))){
-    printf("Switched to listening to server!\n");
-    conn->status = READING_SERVER;
-  }
-}
+  sleep(1);
+  printf("Client: %i <--------> %i : Server\n",cli_len,serv_len);
 
-void forward_next_packet_to_client(ProxyConnection* conn)
-{
-  if (! (forward(conn->serverSock, conn->clientSock))){
-    printf("Finished transaction!\n");
-    conn->status = COMPLETE;
-  }
+  return cli_len != 0 && serv_len != 0;
 }
 
 void *process_queue()
 {
-  while (true) {
+  while (threads_running) {
     ProxyConnection* cur_connection = get_event();
 
     if (cur_connection->status == UNINITIALIZED) {
@@ -257,22 +271,17 @@ void *process_queue()
       init_connection(cur_connection);
     }
 
-    // start forwarding immediately
-    if (cur_connection->status == READING_CLIENT) {
-      printf("Continuing client reading!\n");
-      forward_next_packet_to_server(cur_connection);
-    }
-
-    else if (cur_connection->status == READING_SERVER) {
-      printf("Continuing server reading!\n");
-      forward_next_packet_to_client(cur_connection);
+    else if (cur_connection->status == MAILING) {
+      printf("Mailing Packets back and forth!\n");
+      if (!forward(cur_connection->clientSock, cur_connection->serverSock)){
+	cur_connection->status = COMPLETE;
+      }
     }
 
 
-    // [Re]Enqueue if unfinished and free if finished
     if (cur_connection->status == COMPLETE) { 
       printf("Finished\n");
-      free(cur_connection);
+      free_connection(cur_connection);
     }
     
     else {
@@ -304,6 +313,8 @@ void print_break()
 
 int main(int argc, char** argv)
 {
+  signal(SIGINT, graceful_end);
+
   //Define port using commandline if given
   int port = DEFAULT_PORT;
 
@@ -315,7 +326,7 @@ int main(int argc, char** argv)
     }
     else {
       printf("Port must be > 1024\n");
-      exit(1);
+      graceful_end(1);
     }
   }
 

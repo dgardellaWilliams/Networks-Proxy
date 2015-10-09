@@ -1,50 +1,46 @@
 /**
  * (c) 2015 Devin Gardella, Matt LaRose, and Diwas Timilsina 
  *
- *   A simple web proxy in the C++ programming language under Linux.
+ *  A simple web proxy in the C++ programming language under Linux.
  */
-
-
-/***********************************************************************
-  So we were wrong with the recieves.
-  The connection is not finished so that recv will not return 0.
-  It only does that when the socket is closed!
- ***********************************************************************/
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <netinet/in.h>
 #include <sys/types.h>
-#include <thread>
-#include <string>
 #include <string.h>
-#include <queue>
-#include <mutex>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <sys/fcntl.h>
 #include <unistd.h>
 #include <signal.h>
 
+#include <thread>
+#include <string>
+#include <queue>
+#include <mutex>
+
+
 // number of clients that can be in the backlog
 #define MAX_BACKLOG 10
 
-// size of the buffer for requests
-#define REQ_SIZ 2048
+// size of the buffer for packets 
+#define PACK_SIZ 2048
 
-// Number of threads that'll be doing stuff
+// Number of threads that will be processing the event queue 
 #define WORKER_THREADS 4
 
+//Default port number
 #define DEFAULT_PORT 8000
+int SERVER_PORT = 80;
 
-#define DEBUG 2 // 0 = No Debugging, 1 = Some, 2 = Full
+// 0 = No Debugging, 1 = Some, 2 = Full
+#define DEBUG 2 
 
 // Connection status constants
 #define COMPLETE -1
 #define UNINITIALIZED 0
 #define MAILING 1
-
-int SERVER_PORT = 80;
 
 struct ProxyConnection{
   int clientSock;
@@ -54,17 +50,29 @@ struct ProxyConnection{
 
 std::queue<ProxyConnection*> event_queue;
 std::mutex event_lock;
-int threads_running = 1; // Boolean to say if threads should be running
 
-// Prints a line of ----'s
-void print_break();
+// Boolean to say if threads should be running
+int threads_running = 1; 
 
+/*
+ * Prints a line of ----'s
+ */
+void print_break(){
+  printf("---------------------------------------------------------\n");
+}
+
+/*
+ * Defines the process of closing a connection
+ */
 void free_connection(ProxyConnection* conn){
   shutdown(conn->clientSock,2);
   shutdown(conn->serverSock,2);
   free(conn);
 }
 
+/*
+ * Defines a graceful pattern of shutdown for all current events;
+ */
 void graceful_end(int signum){
   threads_running = 0;
   printf("\nEnding threads in: 3...\n"); sleep(1); 
@@ -105,12 +113,13 @@ ProxyConnection* get_event()
   return next_event;
 }
 
+/*
+ * Uses a lock to enqueue connections in a secure way.
+ */
 void enqueue_connection(ProxyConnection* c)
 {
   event_lock.lock();
-  
   event_queue.push(c); 
-
   event_lock.unlock();
 }
 
@@ -129,7 +138,8 @@ void serve(int listen_sock, struct sockaddr_in my_addr)
 			       (struct sockaddr *) &my_addr, 
 			       (socklen_t *) &addr_len))) 
       {
-	ProxyConnection* new_connect = (ProxyConnection*) malloc(sizeof(ProxyConnection));
+	ProxyConnection* new_connect = 
+	                (ProxyConnection*) malloc(sizeof(ProxyConnection));
 	new_connect->clientSock = new_cli_sock;
 	new_connect->status = UNINITIALIZED;
 	
@@ -138,6 +148,10 @@ void serve(int listen_sock, struct sockaddr_in my_addr)
   }  
 }
 
+/*
+ * The main loop which listens on the designated port and creates the 
+ * connection structs
+ */
 void listen_and_serve(int port)
 {  
   struct sockaddr_in my_addr;
@@ -161,9 +175,15 @@ void listen_and_serve(int port)
   serve(listen_sock, my_addr);
 }
 
+/*
+ * The first step in processing a connection.
+ * Tears out the host path from the http body.
+ * Gathers the optional port.
+ * 
+ */
 void init_connection(ProxyConnection* conn)
 {
-  char buf[REQ_SIZ];
+  char buf[PACK_SIZ];
   int len;
   struct hostent *hp;
   struct sockaddr_in sin;
@@ -178,30 +198,47 @@ void init_connection(ProxyConnection* conn)
     size_t content_len = 0;
     size_t i = 0;
     
-    // Clear code structure with comments. DO NOT CHANGE.
-    do send_buf.push_back(buf[i]); while(buf[i++] != ' ');          //Copy command
+    // Copy command
+    do {
+      send_buf.push_back(buf[i]);
+    } while(buf[i++] != ' ');   
     
-    while(buf[i++] != ':'); 
-    i+=2;                                                           //Skip http or https
+    // Skip http or https and the "://"
+    while(buf[i++] != ':') {}
+    i+=2;                    
     
-    while(buf[i] != '/' && buf[i] != ':') host.push_back(buf[i++]); //Copy host name
-
+    // Copy host name
+    while(buf[i] != '/' && buf[i] != ':') {
+      host.push_back(buf[i++]); 
+    }
+    
+    // If a port is designated, listen on that port.
     if(buf[i] == ':'){
       i++;
       while(buf[i] != '/') port.push_back(buf[i++]);
     } 
     
-    do send_buf.push_back(buf[i]); while(buf[i++] != ' ');          //Copy rest of address 
-    while(buf[i++] != '\n');                                        //Skip HTTP/1.1
-    send_buf += std::string("HTTP/1.0\n");                          //Add HTTP/1.0
-    send_buf += std::string(&buf[i]);                               //Finish copy
+    // Copy rest of address 
+    do {
+      send_buf.push_back(buf[i]);
+    }  while(buf[i++] != ' ');    
+
+    // Skip HTTP/1.1
+    while(buf[i++] != '\n') {}            
+    
+    // Add HTTP/1.0
+    send_buf += std::string("HTTP/1.0\n");
+    
+    // Finish copy
+    send_buf += std::string(&buf[i]);                               
+    
     send_buf.replace(send_buf.find("Connection: keep-alive"), 22, "Connection: close");
     
     if(!port.empty()){
       SERVER_PORT = atoi(port.c_str());
     }
     
-    //translate the host name into IP address
+    // Translate the host name into IP address
     hp = gethostbyname(host.c_str());
     if (!hp){
       printf("unknown host: %s\n",host.c_str());
@@ -209,27 +246,28 @@ void init_connection(ProxyConnection* conn)
       return;
     }
     
-    //build address structure
+    // Build address structure
     sin.sin_family = AF_INET;
     bcopy(hp->h_addr,(char*)&sin.sin_addr,hp->h_length);
     sin.sin_port = htons(SERVER_PORT);
     
-    //active open
+    // Open a socket connection
     if ((sock= socket(PF_INET,SOCK_STREAM,IPPROTO_TCP))<0){
       printf("error in socket to destination\n");
       graceful_end(1);
     }
     conn->serverSock = sock;
 
-
-    /*
-    print_break();
-    fputs(buf,stdout);
-    print_break();
-    fputs(send_buf.c_str(),stdout);
-    printf("\n");
-    */
+    if (DEBUG > 1){
+      // Print the editted buffer
+      print_break();
+      fputs(buf,stdout);
+      print_break();
+      fputs(send_buf.c_str(),stdout);
+      printf("\n");
+    }
    
+    // Attempt to connect to destination server.
     if (connect(sock,(struct sockaddr *)&sin,sizeof(sin))<0){
       printf("couldn't connect to the destination socket\n");
       graceful_end(1);
@@ -243,26 +281,11 @@ void init_connection(ProxyConnection* conn)
     }
     conn->status = MAILING;
   }
-
-  
-
-  // read packet=>
-  //  set port
-  //  set dest address
-  //  set/extract dest path
-  //  set serverSock
-  
-  
-  // # forward packet # done in process_queue now
-
-  // check if done reading packets
-  //  yes => close connection
-  //  no  => update status to READING_CLIENT
 }
 
 int forward(int src_sock, int dest_sock)
 {
-  char buf[REQ_SIZ];
+  char buf[PACK_SIZ];
   int cli_len;
   int serv_len;
   
@@ -324,11 +347,6 @@ void spawn_event_processors()
   for (i=0; i < WORKER_THREADS; i++) {
     threads[i].detach();
   }  
-}
-
-void print_break()
-{
-  printf("---------------------------------------------------------\n");
 }
 
 int main(int argc, char** argv)

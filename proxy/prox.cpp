@@ -35,7 +35,7 @@
 int SERVER_PORT = 80;
 
 // 0 = No Debugging, 1 = Some, 2 = Full
-#define DEBUG 2 
+#define DEBUG 0 
 
 // Connection status constants
 #define COMPLETE -1
@@ -217,22 +217,25 @@ void init_connection(ProxyConnection* conn)
       i++;
       while(buf[i] != '/') port.push_back(buf[i++]);
     } 
-    
+
     // Copy rest of address 
     do {
       send_buf.push_back(buf[i]);
-    }  while(buf[i++] != ' ');    
-
+    }  while(buf[i++] != ' ');          
+    
     // Skip HTTP/1.1
-    while(buf[i++] != '\n') {}            
+    while(buf[i++] != '\n');                                        
     
     // Add HTTP/1.0
-    send_buf += std::string("HTTP/1.0\n");
+    send_buf += std::string("HTTP/1.0\n");                     
     
     // Finish copy
-    send_buf += std::string(&buf[i]);                               
-    
-    send_buf.replace(send_buf.find("Connection: keep-alive"), 22, "Connection: close");
+    send_buf += std::string(&buf[i]);                          
+
+    if (send_buf.find("Connection: keep-alive") != std::string::npos){
+      send_buf.replace(send_buf.find("Connection: keep-alive"), 22, "Connection: close");
+    }
+
     
     if(!port.empty()){
       SERVER_PORT = atoi(port.c_str());
@@ -272,7 +275,7 @@ void init_connection(ProxyConnection* conn)
       printf("couldn't connect to the destination socket\n");
       graceful_end(1);
     }
-        
+    
     int len = strlen(send_buf.c_str())+1;
 
     if (sendto(sock,send_buf.c_str(),len,0, (struct sockaddr *) &sin, sizeof(sin)) < 0){
@@ -299,7 +302,7 @@ int forward(int src_sock, int dest_sock)
     send(src_sock, buf, serv_len, 0);
   }
 
-  //printf("Client: %i <--------> %i : Server\n",cli_len,serv_len);
+  if (DEBUG > 1) printf("Client: %i <--------> %i : Server\n",cli_len,serv_len);
 
   return cli_len != 0 && serv_len != 0;
 }
@@ -310,12 +313,12 @@ void *process_queue()
     ProxyConnection* cur_connection = get_event();
 
     if (cur_connection->status == UNINITIALIZED) {
-      //printf("Starting init!\n");
+      if (DEBUG > 1) printf("Starting init!\n");
       init_connection(cur_connection);
     }
 
     else if (cur_connection->status == MAILING) {
-      //printf("Mailing Packets back and forth!\n");
+      if (DEBUG > 1) printf("Mailing Packets back and forth!\n");
       if (!forward(cur_connection->clientSock, cur_connection->serverSock)){
 	cur_connection->status = COMPLETE;
       }
@@ -323,15 +326,16 @@ void *process_queue()
 
 
     if (cur_connection->status == COMPLETE) { 
-      //printf("Finished\n");
+      if (DEBUG > 1) printf("Finished\n");
       free_connection(cur_connection);
     }
     
     else {
-      //printf("Re-enqueing\n");
+      if (DEBUG > 1) printf("Re-enqueing\n");
       enqueue_connection(cur_connection);
     }
   }
+  return NULL;
 }
 
 
@@ -352,6 +356,7 @@ void spawn_event_processors()
 int main(int argc, char** argv)
 {
   signal(SIGINT, graceful_end);
+  signal(SIGABRT, graceful_end);
 
   //Define port using commandline if given
   int port = DEFAULT_PORT;

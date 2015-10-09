@@ -6,12 +6,8 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <netinet/in.h>
-#include <sys/types.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <netdb.h>
-#include <sys/fcntl.h>
 #include <unistd.h>
 #include <signal.h>
 

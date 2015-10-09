@@ -179,7 +179,6 @@ void listen_and_serve(int port)
  * The first step in processing a connection.
  * Tears out the host path from the http body.
  * Gathers the optional port.
- * 
  */
 void init_connection(ProxyConnection* conn)
 {
@@ -233,7 +232,8 @@ void init_connection(ProxyConnection* conn)
     send_buf += std::string(&buf[i]);                          
 
     if (send_buf.find("Connection: keep-alive") != std::string::npos){
-      send_buf.replace(send_buf.find("Connection: keep-alive"), 22, "Connection: close");
+      send_buf.replace(send_buf.find("Connection: keep-alive"), 22, 
+		       "Connection: close");
     }
 
     
@@ -278,7 +278,8 @@ void init_connection(ProxyConnection* conn)
     
     int len = strlen(send_buf.c_str())+1;
 
-    if (sendto(sock,send_buf.c_str(),len,0, (struct sockaddr *) &sin, sizeof(sin)) < 0){
+    if (sendto(sock,send_buf.c_str(),len,0, (struct sockaddr *) &sin, 
+	       sizeof(sin)) < 0){
       printf("Error in initial send\n");
       graceful_end(1);
     }
@@ -286,6 +287,11 @@ void init_connection(ProxyConnection* conn)
   }
 }
 
+/*
+ * Tests if there is data on either the client or the server socket.
+ * Forwards both sides onto the target.
+ * Returns false if either side is done communication.
+ */
 int forward(int src_sock, int dest_sock)
 {
   char buf[PACK_SIZ];
@@ -302,11 +308,16 @@ int forward(int src_sock, int dest_sock)
     send(src_sock, buf, serv_len, 0);
   }
 
-  if (DEBUG > 1) printf("Client: %i <--------> %i : Server\n",cli_len,serv_len);
+  if (DEBUG > 1) printf("Client: %i <--------> %i :Server\n",cli_len,serv_len);
 
   return cli_len != 0 && serv_len != 0;
 }
 
+/*
+ * The process run by each provided thread. 
+ * Grabs the top event on the queue and takes does one action on it,
+ *  depending on the state.
+ */
 void *process_queue()
 {
   while (threads_running) {
@@ -324,7 +335,6 @@ void *process_queue()
       }
     }
 
-
     if (cur_connection->status == COMPLETE) { 
       if (DEBUG > 1) printf("Finished\n");
       free_connection(cur_connection);
@@ -339,6 +349,9 @@ void *process_queue()
 }
 
 
+/*
+ * Spawns all threads to process the queue.
+ */
 void spawn_event_processors()
 {
   std::thread threads[WORKER_THREADS];
@@ -355,10 +368,11 @@ void spawn_event_processors()
 
 int main(int argc, char** argv)
 {
-  signal(SIGINT, graceful_end);
+  // Sets the default behavior of failure states to close all connections.
+  signal(SIGINT,  graceful_end);
   signal(SIGABRT, graceful_end);
 
-  //Define port using commandline if given
+  // Define port using commandline, if given
   int port = DEFAULT_PORT;
 
   if (argc > 1){

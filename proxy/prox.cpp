@@ -287,29 +287,35 @@ void init_connection(ProxyConnection* conn)
 }
 
 /*
- * Tests if there is data on either the client or the server socket.
- * Forwards both sides onto the target.
- * Returns false if either side is done communication.
+ * Forwards PACK_SIZ bytes from src_sock to dest_sock
+ * Returns number of bytes forwarded
  */
 int forward(int src_sock, int dest_sock)
 {
   char buf[PACK_SIZ];
-  int cli_len;
-  int serv_len;
+  int len = recv(src_sock, buf, sizeof(buf), MSG_DONTWAIT);
 
-  cli_len = recv(src_sock, buf, sizeof(buf), MSG_DONTWAIT);
-  if (cli_len > 0){
-    send(dest_sock, buf, cli_len, 0);
+  if (len > 0) {
+    send(dest_sock, buf, len, 0);
   }
 
-  serv_len = recv(dest_sock, buf, sizeof(buf), MSG_DONTWAIT);
-  if (serv_len > 0){
-    send(src_sock, buf, serv_len, 0);
+  return len;
+}
+
+/*
+ * Forward packets between each end of a connection
+ * return whether or not there are any remaining packets to send
+ */
+bool exchange_packets(ProxyConnection* conn) 
+{
+  int sent_to_server = forward(conn->clientSock, conn->serverSock);
+  int sent_to_client = forward(conn->serverSock, conn->clientSock);
+  
+  if (DEBUG > 1) {
+    printf("Client: %i <--> %i :Server\n", sent_to_server, sent_to_client);
   }
-
-  if (DEBUG > 1) printf("Client: %i <--------> %i :Server\n",cli_len,serv_len);
-
-  return cli_len != 0 && serv_len != 0;
+  
+  return sent_to_server || sent_to_client;
 }
 
 /*
@@ -324,17 +330,16 @@ void *process_queue()
 
     if (cur_connection->status == UNINITIALIZED) {
       if (DEBUG > 1) printf("Initializing connection\n");
-      init_connection(cur_connection);
-      if (DEBUG > 1) {
-	printf("Number connections: %d\n", (int) event_queue.size());
-      }
+
+      init_connection(cur_connection);      
     }
 
     else if (cur_connection->status == MAILING) {
       if (DEBUG > 1) printf("Mailing Packets back and forth\n");
-      if (!forward(cur_connection->clientSock, cur_connection->serverSock)){
+
+      if (!exchange_packets(cur_connection)) {
 	cur_connection->status = COMPLETE;
-      }
+      }  
     }
 
     if (cur_connection->status == COMPLETE) {
@@ -343,9 +348,14 @@ void *process_queue()
     }
 
     else {
+      // Throw it to the end of the queue
       if (DEBUG > 1) printf("Re-enqueing\n");
       enqueue_connection(cur_connection);
     }
+  }
+
+  if (DEBUG > 1) {
+    printf("Num cxns: %d\n", (int) event_queue.size());
   }
 }
 
@@ -361,7 +371,9 @@ void spawn_event_processors()
     if (DEBUG > 1) printf("Thread %i Started\n", i+1);
     threads[i] = std::thread(process_queue);
   }
+
   print_break();
+
   for (i=0; i < WORKER_THREADS; i++) {
     threads[i].detach();
   }

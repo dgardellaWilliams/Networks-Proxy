@@ -28,7 +28,6 @@
 
 //Default port number
 #define DEFAULT_PORT 8000
-int SERVER_PORT = 80;
 
 // 0 = No Debugging, 1 = Some, 2 = Full
 #define DEBUG 2
@@ -60,9 +59,13 @@ void print_break(){
 /*
  * Defines the process of closing a connection
  */
-void free_connection(ProxyConnection* conn){
+void free_connection(ProxyConnection* conn)
+{
+  if (DEBUG > 1) printf("Finished\n");
+
   shutdown(conn->clientSock, 2);
   shutdown(conn->serverSock, 2);
+
   free(conn);
 }
 
@@ -164,7 +167,7 @@ void listen_and_serve(int port)
 
   // Bind socket and exit if failed.
   if (bind(listen_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) < 0) {
-    perror("failed to bind.\n");
+    perror("self failed to bind.\n");
     graceful_end(1);
   }
 
@@ -179,9 +182,12 @@ void listen_and_serve(int port)
  * The first step in processing a connection.
  * Tears out the host path from the http body.
  * Gathers the optional port.
+ * Returns whether the connection was set up successfully
  */
-void init_connection(ProxyConnection* conn)
+bool init_connection(ProxyConnection* conn)
 {
+  if (DEBUG > 1) printf("Initializing connection\n");
+
   char buf[PACK_SIZ];
   int len;
   struct hostent *hp;
@@ -197,16 +203,18 @@ void init_connection(ProxyConnection* conn)
     size_t content_len = 0;
     size_t i = 0;
 
-    // Copy command
+    // Should replace all this with some regexes
+    
+    // Copy command (GET, etc)
     do {
       send_buf.push_back(buf[i]);
-    } while(buf[i++] != ' ');
+    } while (buf[i++] != ' ');
 
     // Skip http or https and the "://"
-    while (buf[i++] != ':') {}
+    while (buf[i++] != ':');
     i+=2;
 
-    // Copy host name
+    // Copy host name (goes up to a : or /)
     while (buf[i] != '/' && buf[i] != ':') {
       host.push_back(buf[i++]);
     }
@@ -216,11 +224,11 @@ void init_connection(ProxyConnection* conn)
       i++;
       while(buf[i] != '/') port.push_back(buf[i++]);
     }
-
+    
     // Copy rest of address
     do {
       send_buf.push_back(buf[i]);
-    }  while(buf[i++] != ' ');
+    } while(buf[i++] != ' ');
 
     // Skip HTTP/1.1
     while (buf[i++] != '\n');
@@ -228,40 +236,40 @@ void init_connection(ProxyConnection* conn)
     // Add HTTP/1.0
     send_buf += std::string("HTTP/1.0\n");
 
-    // Finish copy
+    // Finish copy (copy rest)
     send_buf += std::string(&buf[i]);
 
     if (send_buf.find("Connection: keep-alive") != std::string::npos){
       send_buf.replace(send_buf.find("Connection: keep-alive"), 22,
 		       "Connection: close");
     }
-
+    
+    int server_port = 80;
     if (!port.empty()){
-      SERVER_PORT = atoi(port.c_str());
+      server_port = atoi(port.c_str());
     }
 
     // Translate the host name into IP address
     hp = gethostbyname(host.c_str());
     if (!hp){
-      printf("unknown host: %s\n",host.c_str());
-      conn->status = COMPLETE;
-      return;
+      printf("unknown host: %s\n, closing connection", host.c_str());
+      return false;
     }
 
     // Build address structure
     sin.sin_family = AF_INET;
-    bcopy(hp->h_addr,(char*)&sin.sin_addr,hp->h_length);
-    sin.sin_port = htons(SERVER_PORT);
+    bcopy(hp->h_addr, (char*)&sin.sin_addr, hp->h_length);
+    sin.sin_port = htons(server_port);
 
     // Open a socket connection
-    if ((sock= socket(PF_INET,SOCK_STREAM,IPPROTO_TCP))<0){
+    if ((sock=socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
       printf("error in socket to destination\n");
-      graceful_end(1);
+      return false;
     }
     conn->serverSock = sock;
 
     if (DEBUG > 1){
-      // Print the editted buffer
+      // Print the edited buffer
       print_break();
       fputs(buf,stdout);
       print_break();
@@ -270,20 +278,21 @@ void init_connection(ProxyConnection* conn)
     }
 
     // Attempt to connect to destination server.
-    if (connect(sock,(struct sockaddr *)&sin,sizeof(sin))<0){
+    if (connect(sock, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
       printf("couldn't connect to the destination socket\n");
-      graceful_end(1);
+      return false;
     }
 
-    int len = strlen(send_buf.c_str())+1;
+    int len = strlen(send_buf.c_str()) + 1;
 
-    if (sendto(sock,send_buf.c_str(),len,0, (struct sockaddr *) &sin,
+    if (sendto(sock, send_buf.c_str(), len, 0, (struct sockaddr *)&sin,
 	       sizeof(sin)) < 0){
       printf("Error in initial send\n");
-      graceful_end(1);
+      return false;
     }
-    conn->status = MAILING;
   }
+
+  return true;
 }
 
 /*
@@ -308,6 +317,8 @@ int forward(int src_sock, int dest_sock)
  */
 bool exchange_packets(ProxyConnection* conn) 
 {
+  if (DEBUG > 1) printf("Exchanging packets\n");
+
   int sent_to_server = forward(conn->clientSock, conn->serverSock);
   int sent_to_client = forward(conn->serverSock, conn->clientSock);
   
@@ -329,21 +340,20 @@ void *process_queue()
     ProxyConnection* cur_connection = get_event();
 
     if (cur_connection->status == UNINITIALIZED) {
-      if (DEBUG > 1) printf("Initializing connection\n");
-
-      init_connection(cur_connection);      
+      if (!init_connection(cur_connection)) {
+	cur_connection->status = COMPLETE;
+      } else {
+	cur_connection->status = MAILING;
+      }
     }
 
     else if (cur_connection->status == MAILING) {
-      if (DEBUG > 1) printf("Mailing Packets back and forth\n");
-
       if (!exchange_packets(cur_connection)) {
-	cur_connection->status = COMPLETE;
+    	cur_connection->status = COMPLETE;
       }  
     }
 
     if (cur_connection->status == COMPLETE) {
-      if (DEBUG > 1) printf("Finished\n");
       free_connection(cur_connection);
     }
 

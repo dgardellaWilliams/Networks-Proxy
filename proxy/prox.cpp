@@ -36,18 +36,20 @@
 #define COMPLETE -1
 #define UNINITIALIZED 0
 #define MAILING 1
+#define FAILED 2
 
 struct ProxyConnection{
   int clientSock;
   int serverSock;
   int status;
+  const char *host;
 };
 
 std::queue<ProxyConnection*> event_queue;
 std::mutex event_lock;
 
 // Boolean to say if threads should be running
-bool run_threads = true;
+bool serving = true;
 
 /*
  * Prints a line of ----'s
@@ -74,7 +76,7 @@ void free_connection(ProxyConnection* conn)
  */
 void graceful_end(int signum){
   // Tell threads to stop running
-  run_threads = false;
+  serving = false;
 
   printf("\nEnding threads in: 3...\n"); sleep(1);
   printf("Ending threads in: 2...\n"); sleep(1);
@@ -190,21 +192,14 @@ bool init_connection(ProxyConnection* conn)
 
   char buf[PACK_SIZ];
   int len;
-  struct hostent *hp;
-  struct sockaddr_in sin;
-  int sock;
-
 
   if ((len = recv(conn->clientSock, buf, sizeof(buf), 0))){
 
     std::string send_buf = "";
     std::string host = "";
     std::string port = "";
-    size_t content_len = 0;
     size_t i = 0;
 
-    // Should replace all this with some regexes
-    
     // Copy command (GET, etc)
     do {
       send_buf.push_back(buf[i]);
@@ -220,7 +215,7 @@ bool init_connection(ProxyConnection* conn)
     }
 
     // If a port is designated, listen on that port.
-    if (buf[i] == ':'){
+    if (buf[i] == ':') {
       i++;
       while(buf[i] != '/') port.push_back(buf[i++]);
     }
@@ -228,7 +223,7 @@ bool init_connection(ProxyConnection* conn)
     // Copy rest of address
     do {
       send_buf.push_back(buf[i]);
-    } while(buf[i++] != ' ');
+    } while (buf[i++] != ' ');
 
     // Skip HTTP/1.1
     while (buf[i++] != '\n');
@@ -243,30 +238,27 @@ bool init_connection(ProxyConnection* conn)
       send_buf.replace(send_buf.find("Connection: keep-alive"), 22,
 		       "Connection: close");
     }
-    
-    int server_port = 80;
-    if (!port.empty()){
-      server_port = atoi(port.c_str());
-    }
 
-    // Translate the host name into IP address
-    hp = gethostbyname(host.c_str());
-    if (!hp){
+    struct hostent *hp = gethostbyname(host.c_str());
+    if (!hp) {
       printf("unknown host: %s\n, closing connection", host.c_str());
       return false;
     }
+    conn->host = host.c_str();
+
+    int server_port = port.empty() ? 80 : atoi(port.c_str());
 
     // Build address structure
+    struct sockaddr_in sin;
     sin.sin_family = AF_INET;
     bcopy(hp->h_addr, (char*)&sin.sin_addr, hp->h_length);
     sin.sin_port = htons(server_port);
 
     // Open a socket connection
-    if ((sock=socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+    if ((conn->serverSock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
       printf("error in socket to destination\n");
       return false;
     }
-    conn->serverSock = sock;
 
     if (DEBUG > 1){
       // Print the edited buffer
@@ -278,15 +270,13 @@ bool init_connection(ProxyConnection* conn)
     }
 
     // Attempt to connect to destination server.
-    if (connect(sock, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
+    if (connect(conn->serverSock, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
       printf("couldn't connect to the destination socket\n");
       return false;
     }
 
     int len = strlen(send_buf.c_str()) + 1;
-
-    if (sendto(sock, send_buf.c_str(), len, 0, (struct sockaddr *)&sin,
-	       sizeof(sin)) < 0){
+    if (send(conn->serverSock, send_buf.c_str(), len, 0) < 0) {
       printf("Error in initial send\n");
       return false;
     }
@@ -336,31 +326,23 @@ bool exchange_packets(ProxyConnection* conn)
  */
 void *process_queue()
 {
-  while (run_threads) {
-    ProxyConnection* cur_connection = get_event();
+  while (serving) {
+    ProxyConnection* conn = get_event();
 
-    if (cur_connection->status == UNINITIALIZED) {
-      if (!init_connection(cur_connection)) {
-	cur_connection->status = COMPLETE;
-      } else {
-	cur_connection->status = MAILING;
-      }
+    if (conn->status == UNINITIALIZED) {
+      conn->status = init_connection(conn) ? MAILING : FAILED;
+    } 
+    else if (conn->status == MAILING && !exchange_packets(conn)) {
+      conn->status = COMPLETE;
     }
 
-    else if (cur_connection->status == MAILING) {
-      if (!exchange_packets(cur_connection)) {
-    	cur_connection->status = COMPLETE;
-      }  
+    if (conn->status == COMPLETE || conn->status == FAILED) {
+      free_connection(conn);
     }
-
-    if (cur_connection->status == COMPLETE) {
-      free_connection(cur_connection);
-    }
-
     else {
       // Throw it to the end of the queue
       if (DEBUG > 1) printf("Re-enqueing\n");
-      enqueue_connection(cur_connection);
+      enqueue_connection(conn);
     }
   }
 
@@ -376,15 +358,15 @@ void *process_queue()
 void spawn_event_processors()
 {
   std::thread threads[WORKER_THREADS];
-  int i;
-  for (i = 0; i < WORKER_THREADS; i++) {
-    if (DEBUG > 1) printf("Thread %i Started\n", i+1);
+
+  for (int i = 0; i < WORKER_THREADS; i++) {
+    if (DEBUG > 1) printf("Thread %i Started\n", i);
     threads[i] = std::thread(process_queue);
   }
 
   print_break();
 
-  for (i=0; i < WORKER_THREADS; i++) {
+  for (int i = 0; i < WORKER_THREADS; i++) {
     threads[i].detach();
   }
 }

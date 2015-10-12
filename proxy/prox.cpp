@@ -41,7 +41,6 @@ struct ProxyConnection{
   int clientSock;
   int serverSock;
   int status;
-  const char *host;
 };
 
 std::queue<ProxyConnection*> event_queue;
@@ -50,7 +49,9 @@ std::mutex event_lock;
 // Boolean to say if threads should be running
 bool serving = true;
 
+// Track number of connections for debugging
 int num_cxns = 0;
+std::mutex cxns_lock;
 
 /*
  * Prints a line of ----'s
@@ -64,14 +65,18 @@ void print_break(){
  */
 void free_connection(ProxyConnection* conn)
 {
-  if (DEBUG >= 1) printf("Terminating cxn with %s\n", conn->host);
+  if (DEBUG >= 1) printf("Terminating cxn\n");
 
   shutdown(conn->clientSock, 2);
   shutdown(conn->serverSock, 2);
 
   free(conn);
   
-  num_cxns--;
+  if (DEBUG >= 1) {
+    cxns_lock.lock();
+    num_cxns--;
+    cxns_lock.unlock();
+  }
 }
 
 /*
@@ -151,6 +156,7 @@ void serve(int listen_sock, struct sockaddr_in my_addr)
 	new_conn->clientSock = new_cli_sock;
 	new_conn->status = UNINITIALIZED;
 
+	// Prepare for but don't actually process yet
 	enqueue_connection(new_conn);
     }
   }
@@ -191,8 +197,12 @@ void listen_and_serve(int port)
  */
 bool init_connection(ProxyConnection* conn)
 {
-  if (DEBUG >= 1) printf("Initializing connection\n");
-  num_cxns++;
+  if (DEBUG >= 1) {
+    printf("Initializing connection\n");
+    cxns_lock.lock();
+    num_cxns++;
+    cxns_lock.unlock();
+  }
 
   char buf[PACK_SIZ];
   int len;
@@ -247,8 +257,7 @@ bool init_connection(ProxyConnection* conn)
     if (!hp) {
       printf("unknown host: %s\n, closing connection", host.c_str());
       return false;
-    }
-    conn->host = host.c_str();
+    }    
 
     int server_port = port.empty() ? 80 : atoi(port.c_str());
 
@@ -286,7 +295,7 @@ bool init_connection(ProxyConnection* conn)
     }
   }
 
-  if (DEBUG >= 1) printf("Connection with %s established\n", conn->host);
+  if (DEBUG >= 1) printf("Connection established\n");
 
   return true;
 }

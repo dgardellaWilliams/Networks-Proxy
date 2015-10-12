@@ -29,7 +29,7 @@
 #define DEFAULT_PORT 8000
 
 // 0 = No Debugging, 1 = Some, 2 = Full
-#define DEBUG 2
+#define DEBUG 1
 
 // Connection status constants
 #define COMPLETE -1
@@ -50,6 +50,8 @@ std::mutex event_lock;
 // Boolean to say if threads should be running
 bool serving = true;
 
+int num_cxns = 0;
+
 /*
  * Prints a line of ----'s
  */
@@ -62,12 +64,14 @@ void print_break(){
  */
 void free_connection(ProxyConnection* conn)
 {
-  if (DEBUG > 1) printf("Finished\n");
+  if (DEBUG >= 1) printf("Terminating cxn with %s\n", conn->host);
 
   shutdown(conn->clientSock, 2);
   shutdown(conn->serverSock, 2);
 
   free(conn);
+  
+  num_cxns--;
 }
 
 /*
@@ -187,7 +191,8 @@ void listen_and_serve(int port)
  */
 bool init_connection(ProxyConnection* conn)
 {
-  if (DEBUG > 1) printf("Initializing connection\n");
+  if (DEBUG >= 1) printf("Initializing connection\n");
+  num_cxns++;
 
   char buf[PACK_SIZ];
   int len;
@@ -281,6 +286,8 @@ bool init_connection(ProxyConnection* conn)
     }
   }
 
+  if (DEBUG >= 1) printf("Connection with %s established\n", conn->host);
+
   return true;
 }
 
@@ -311,7 +318,7 @@ bool exchange_packets(ProxyConnection* conn)
   int sent_to_server = forward(conn->clientSock, conn->serverSock);
   int sent_to_client = forward(conn->serverSock, conn->clientSock);
   
-  if (DEBUG > 1) {
+  if (DEBUG >= 1 && (sent_to_server > 0 || sent_to_client > 0)) {
     printf("Client: %i <--> %i :Server\n", sent_to_server, sent_to_client);
   }
   
@@ -330,6 +337,7 @@ void *process_queue()
 
     if (conn->status == UNINITIALIZED) {
       conn->status = init_connection(conn) ? MAILING : FAILED;
+      if (DEBUG >= 1) printf("Num cxns: %d\n", num_cxns);
     } 
     else if (conn->status == MAILING && !exchange_packets(conn)) {
       conn->status = COMPLETE;
@@ -337,16 +345,13 @@ void *process_queue()
 
     if (conn->status == COMPLETE || conn->status == FAILED) {
       free_connection(conn);
+      if (DEBUG >= 1) printf("Num cxns: %d\n", num_cxns);
     }
     else {
       // Throw it to the end of the queue
       if (DEBUG > 1) printf("Re-enqueing\n");
       enqueue_connection(conn);
     }
-  }
-
-  if (DEBUG > 1) {
-    printf("Num cxns: %d\n", (int) event_queue.size());
   }
 }
 

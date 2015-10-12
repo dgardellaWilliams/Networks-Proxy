@@ -16,7 +16,6 @@
 #include <queue>
 #include <mutex>
 
-
 // number of clients that can be in the backlog
 #define MAX_BACKLOG 10
 
@@ -129,8 +128,7 @@ void enqueue_connection(ProxyConnection* c)
 }
 
 /*
- * Open new sockets for incoming connections, and enqueue them
- * for processing
+ * Enqueue incoming connections for processing
  */
 void serve(int listen_sock, struct sockaddr_in my_addr)
 {
@@ -140,15 +138,16 @@ void serve(int listen_sock, struct sockaddr_in my_addr)
 
     // When we get a new connection, we enqueue it
     if ((new_cli_sock = accept(listen_sock,
-			       (struct sockaddr *) &my_addr,
-			       (socklen_t *) &addr_len)))
+			       (struct sockaddr *)&my_addr,
+			       (socklen_t *)&addr_len)))
       {
-	ProxyConnection* new_connect =
-	                (ProxyConnection*) malloc(sizeof(ProxyConnection));
-	new_connect->clientSock = new_cli_sock;
-	new_connect->status = UNINITIALIZED;
+	ProxyConnection* new_conn;
+	new_conn = (ProxyConnection*) malloc(sizeof(ProxyConnection));
 
-	enqueue_connection(new_connect);
+	new_conn->clientSock = new_cli_sock;
+	new_conn->status = UNINITIALIZED;
+
+	enqueue_connection(new_conn);
     }
   }
 }
@@ -169,7 +168,7 @@ void listen_and_serve(int port)
 
   // Bind socket and exit if failed.
   if (bind(listen_sock, (struct sockaddr *)&my_addr, sizeof(my_addr)) < 0) {
-    perror("self failed to bind.\n");
+    perror("Self failed to bind.\n");
     graceful_end(1);
   }
 
@@ -260,12 +259,12 @@ bool init_connection(ProxyConnection* conn)
       return false;
     }
 
-    if (DEBUG > 1){
+    if (DEBUG > 1) {
       // Print the edited buffer
       print_break();
-      fputs(buf,stdout);
+      fputs(buf, stdout);
       print_break();
-      fputs(send_buf.c_str(),stdout);
+      fputs(send_buf.c_str(), stdout);
       printf("\n");
     }
 
@@ -275,8 +274,8 @@ bool init_connection(ProxyConnection* conn)
       return false;
     }
 
-    int len = strlen(send_buf.c_str()) + 1;
-    if (send(conn->serverSock, send_buf.c_str(), len, 0) < 0) {
+    int content_len = strlen(send_buf.c_str()) + 1;
+    if (send(conn->serverSock, send_buf.c_str(), content_len, 0) < 0) {
       printf("Error in initial send\n");
       return false;
     }

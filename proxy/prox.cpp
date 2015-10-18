@@ -23,7 +23,7 @@
 #define PACK_SIZ 2048
 
 // Number of threads that will be processing the event queue
-#define WORKER_THREADS 1
+#define WORKER_THREADS 4
 
 //Default port number
 #define DEFAULT_PORT 8000
